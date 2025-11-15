@@ -5,7 +5,7 @@
 builtins.trace (builtins.deepSeq updates updates) (
 let
   manifest = import (cwd + "/mana.nix");
-  currentLock = builtins.fromJSON (builtins.readFile (cwd + /lock.json));
+  currentLock = builtins.fromJSON (builtins.readFile (cwd + "/lock.json"));
   /*
     Checks if a path of attribute names exists
   */
