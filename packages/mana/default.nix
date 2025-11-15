@@ -8,7 +8,9 @@
     NIX_SOURCE_FILES="${../../template}"
 
     function init() {
-        cp -r "$NIX_SOURCE_FILES" ./.
+        cp -rf "$NIX_SOURCE_FILES"/* .
+        mkdir -p nix
+        cp ${../../nix/importer.nix} ./nix/importer.nix
         echo "Mana initialized 💎"
         chmod +w -R .
     }
