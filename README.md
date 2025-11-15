@@ -5,6 +5,8 @@ Mana is a simple approach that solves dependency locking and injection in a simp
 - Its only few lines of bash ⚡️ nix
 - plural: Mana
 
+🚧🚧🚧 Under construction 🚧🚧🚧
+
 ## Init
 
 ```sh
