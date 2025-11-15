@@ -39,7 +39,7 @@
             --arg cwd "$(pwd)" \
             --arg updates "$nix_attrset" \
             ${../../scripts/update.nix} \
-            | jq -S '.' > lock.json
+            | jq -S '.' > _lock.json
         chmod +w -R nix
         echo "lock.json updated"
     }
