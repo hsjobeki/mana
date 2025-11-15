@@ -1,0 +1,18 @@
+{
+  "nixpkgs": {
+    "args": {
+      "owner": "nixos",
+      "repo": "nixpkgs",
+      "type": "github"
+    },
+    "dependencies": {},
+    "locked": {
+      "lastModified": 1763198477,
+      "lastModifiedDate": "20251115092117",
+      "narHash": "sha256-F5JUe1q7ej7SPTyh/UXc8WVN+i9ZkfUmbsX3gpKNvlw=",
+      "rev": "80cb6c4248091bae5452136c3abcc782d96122e9",
+      "shortRev": "80cb6c4"
+    },
+    "url": "github:nixos/nixpkgs"
+  }
+}

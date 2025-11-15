@@ -1,4 +1,5 @@
-{ cwd, omit ? [] }: let
+{ cwd }:
+let
   manifest = import (cwd + "/mana.nix");
   collectLockEntries =
     path: manifest:

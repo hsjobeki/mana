@@ -103,7 +103,7 @@ let
       scope = (
         importTree {
           inherit groups manafest;
-          lock = builtins.fromJSON (builtins.readFile ./lock.json);
+          lock = builtins.fromJSON (builtins.readFile ../lock.json);
         }
       );
       f = import manafest.entrypoint;
