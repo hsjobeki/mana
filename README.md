@@ -1,6 +1,6 @@
 # Mana 💎
 
-Mana is a simple approach that solves dependency locking and injection in simple and effective way.
+Mana is a simple approach that solves dependency locking and injection in a simple and effective way.
 
 - Its only few lines of bash ⚡️ nix
 - plural: Mana
