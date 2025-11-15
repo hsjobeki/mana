@@ -5,10 +5,10 @@
 
     set -e
 
-    NIX_SOURCE_FILES="${../../assets}"
+    NIX_SOURCE_FILES="${../../template}"
 
     function init() {
-        cp "$NIX_SOURCE_FILES" ./.
+        cp -r "$NIX_SOURCE_FILES" ./.
         echo "Mana initialized 💎"
         chmod +w -R .
     }
