@@ -3,11 +3,12 @@
   text = ''
     #!/usr/bin/env bash
 
-    set -e
+    set -efu -o pipefail
 
     NIX_SOURCE_FILES="${../../template}"
 
     function init() {
+        set -ef -o pipefail
         cp -rf "$NIX_SOURCE_FILES"/* .
         mkdir -p nix
         cp ${../../nix/importer.nix} ./nix/importer.nix
@@ -16,15 +17,16 @@
     }
 
     function lock() {
+        set -efu -o pipefail
         echo "Generating mana lock.json ◇◇◇◇"
         mkdir -p nix
         nix-instantiate --eval --strict --json --arg cwd "$(pwd)" ${../../scripts/lock.nix} \
             | jq -S '.' > lock.json
-        chmod -R +w nix
         echo "lock.json updated"
     }
 
     function update() {
+        set -efu -o pipefail
         local nix_attrset
 
         if [ $# -eq 0 ]; then
@@ -37,17 +39,15 @@
 
 
         # Convert arguments to Nix attrset: { "foo" = null; "bar" = null; }
-        nix-instantiate --eval --strict --json \
+        nix --extra-experimental-features nix-command eval --refresh --json \
             --arg cwd "$(pwd)" \
             --arg updates "$nix_attrset" \
-            -A result \
-            ${../../scripts/update.nix} \
+            -f ${../../scripts/update.nix} \
+            result \
             | jq -S '.' > next_lock.json
 
-        mkdir -p nix
         # verify the next lock file
         if jq -e . next_lock.json > /dev/null 2>&1; then
-            chmod +w next_lock.json lock.json
             mv next_lock.json lock.json
             echo "lock.json updated"
         else
