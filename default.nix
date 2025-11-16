@@ -1,1 +1,1 @@
-(import ./nix/importer.nix) [ "eval" ]
+(import ./nix/importer.nix) { }

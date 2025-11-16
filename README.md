@@ -90,7 +90,7 @@ If you create a seperate `ci.nix`
 
 ```nix
 # ci.nix
-(import ./nix/importer.nix) [ "eval" "dev" ]
+(import ./nix/importer.nix) { groups =  [ "eval" "dev" ]; }
 ```
 
 Using `default.nix`: `treefmt-nix` will contain an error that throws when acessed - But

@@ -97,7 +97,7 @@ let
     ) lock;
 
   root =
-    groups:
+    { groups ? [ "eval" ] }:
     let
       manafest = import ../mana.nix;
       scope = (
