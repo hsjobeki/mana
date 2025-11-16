@@ -12,7 +12,7 @@
         mkdir -p nix
         cp ${../../nix/importer.nix} ./nix/importer.nix
         echo "Mana initialized 💎"
-        chmod +w -R .
+        chmod -R +w .
     }
 
     function lock() {
