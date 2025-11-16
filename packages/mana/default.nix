@@ -25,23 +25,26 @@
     }
 
     function update() {
+        local nix_attrset
+
         if [ $# -eq 0 ]; then
-            echo "Usage: update <dep> [<dep2>] [<dep3>...]"
-            echo "Example: update nixpkgs home-manager"
-            return 1
+            nix_attrset=$(printf '{ }')
+            echo "Updating all dependencies"
+        else
+            nix_attrset=$(printf '{ %s}' "$(printf '%s = null; ' "$@")")
+            echo "Updating dependencies: $*"
         fi
-        echo "Updating dependencies: $*"
-        mkdir -p nix
+
 
         # Convert arguments to Nix attrset: { "foo" = null; "bar" = null; }
-        local nix_attrset
-        nix_attrset=$(printf '{ %s}' "$(printf '%s = null; ' "$@")")
         nix-instantiate --eval --strict --json \
             --arg cwd "$(pwd)" \
             --arg updates "$nix_attrset" \
+            -A result \
             ${../../scripts/update.nix} \
             | jq -S '.' > next_lock.json
 
+        mkdir -p nix
         # verify the next lock file
         if jq -e . next_lock.json > /dev/null 2>&1; then
             chmod +w next_lock.json lock.json

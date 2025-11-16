@@ -2,13 +2,14 @@
   cwd,
   updates ? { },
 }:
-builtins.trace (builtins.deepSeq updates updates) (
 let
+  debug = msg: v: builtins.trace "${msg} ${(builtins.toJSON v)}" v;
+
+  updateAll = updates == { };
+
   rootManifest = import (cwd + "/mana.nix");
   currentLock = builtins.fromJSON (builtins.readFile (cwd + "/lock.json"));
-  /*
-    Checks if a path of attribute names exists
-  */
+  # Checks if a path of attribute names exists
   hasAttrPath =
     path: attrs:
     let
@@ -38,49 +39,86 @@ let
     in
     result.success;
 
-  collectLockEntries =
+  # genAttrs =
+  #   list: f:
+  #   builtins.listToAttrs (
+  #     map (name: {
+  #       inherit name;
+  #       value = f name;
+  #     }) list
+  #   );
+
+  filterAttrs =
+    pred: set:
+    removeAttrs set (builtins.filter (name: !pred name set.${name}) (builtins.attrNames set));
+
+  getManifest =
+    manifest:
+    manifest
+    // {
+      groups =
+        manifest.groups or {
+          eval = builtins.mapAttrs (n: v: [ "eval" ]) (manifest.dependencies or { });
+        };
+    };
+
+  go =
     ctx: manifest:
-    builtins.mapAttrs (
-      ident: spec:
-      let
-        currPath = ctx.path ++ [ ident ];
-        shouldUpdate = hasAttrPath currPath updates;
-        # ---
-        inherit (spec) url;
-        fetchTreeArgs = (builtins.parseFlakeRef url) // (spec.args or { });
-        fetchResult = fetchTree fetchTreeArgs;
+    let
+      manifest' = getManifest manifest;
+      enabledGroupsFor = builtins.zipAttrsWith (n: vs: builtins.concatLists vs) (
+        builtins.attrValues manifest'.groups
+      );
 
-        # --- next manifest
-        nestedManifestFile = "${fetchResult}/mana.nix";
-        optManifestFile = if builtins.pathExists nestedManifestFile then import nestedManifestFile else { };
+      mapped = builtins.mapAttrs (
+        ident: enabledGroups:
+        let
+          spec = manifest.dependencies.${ident};
+          currPath = ctx.path ++ [ ident ];
+          shouldUpdate = updateAll || hasAttrPath currPath updates;
+          # ---
+          inherit (spec) url;
+          fetchTreeArgs = (builtins.parseFlakeRef url) // (spec.args or { });
+          fetchResult = fetchTree fetchTreeArgs;
 
-        # --- correlated lock entry
-        lockEnt = ctx.lock.${ident};
-      in
-      {
-        args = fetchTreeArgs;
-        locked =
-          if shouldUpdate then
-            removeAttrs fetchResult [ "outPath" ]
-          else
-            # If this should not update
-            # Just return the locked entry
-            lockEnt.locked;
-        inherit url;
+          # --- next manifest
+          nestedManifestFile = "${fetchResult}/mana.nix";
+          optManifestFile = if builtins.pathExists nestedManifestFile then import nestedManifestFile else { };
 
-        dependencies = collectLockEntries {
-          path = currPath;
-          lock = ctx.lock.${ident}.dependencies or { };
-        } optManifestFile;
-      }
+          manifestWithDefaults = getManifest optManifestFile;
 
-    ) (manifest.dependencies or { });
+          enabledManifest = (debug "default ${toString currPath}" manifestWithDefaults) // {
+            groups = filterAttrs (n: _: builtins.elem n enabledGroups) manifestWithDefaults.groups;
+          };
+          # --- correlated lock entry
+          lockEnt = ctx.lock.${ident};
+        in
+        {
+          args = fetchTreeArgs;
+          locked =
+            if shouldUpdate then
+              removeAttrs fetchResult [ "outPath" ]
+            else
+              # If this should not update
+              # Just return the locked entry
+              lockEnt.locked;
+          inherit url;
 
-  result = collectLockEntries {
+          dependencies = go {
+            path = currPath;
+            lock = ctx.lock.${ident}.dependencies or { };
+          } enabledManifest;
+        }
+      ) enabledGroupsFor;
+    in
+    mapped;
+
+  result = go {
     path = [ ];
     lock = currentLock;
   } rootManifest;
 
 in
-result
-)
+{
+  inherit result;
+}
