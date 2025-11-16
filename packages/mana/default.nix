@@ -31,17 +31,26 @@
             return 1
         fi
         echo "Updating dependencies: $*"
+        mkdir -p nix
+
         # Convert arguments to Nix attrset: { "foo" = null; "bar" = null; }
         local nix_attrset
         nix_attrset=$(printf '{ %s}' "$(printf '%s = null; ' "$@")")
-        mkdir -p nix
         nix-instantiate --eval --strict --json \
             --arg cwd "$(pwd)" \
             --arg updates "$nix_attrset" \
             ${../../scripts/update.nix} \
-            | jq -S '.' > _lock.json
-        chmod +w -R nix
-        echo "lock.json updated"
+            | jq -S '.' > next_lock.json
+
+        # verify the next lock file
+        if jq -e . next_lock.json > /dev/null 2>&1; then
+            chmod +w next_lock.json lock.json
+            mv next_lock.json lock.json
+            echo "lock.json updated"
+        else
+            echo "Error: Generated invalid lock file"
+            return 1
+        fi
     }
 
     case "$1" in

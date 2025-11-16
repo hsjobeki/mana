@@ -4,7 +4,7 @@
 }:
 builtins.trace (builtins.deepSeq updates updates) (
 let
-  manifest = import (cwd + "/mana.nix");
+  rootManifest = import (cwd + "/mana.nix");
   currentLock = builtins.fromJSON (builtins.readFile (cwd + "/lock.json"));
   /*
     Checks if a path of attribute names exists
@@ -45,17 +45,16 @@ let
       let
         currPath = ctx.path ++ [ ident ];
         shouldUpdate = hasAttrPath currPath updates;
-        # ----
+        # ---
         inherit (spec) url;
         fetchTreeArgs = (builtins.parseFlakeRef url) // (spec.args or { });
         fetchResult = fetchTree fetchTreeArgs;
+
+        # --- next manifest
         nestedManifestFile = "${fetchResult}/mana.nix";
         optManifestFile = if builtins.pathExists nestedManifestFile then import nestedManifestFile else { };
-        dependencies = collectLockEntries {
-          path = currPath;
-          lock = ctx.lock.${ident}.dependencies or { };
-        } optManifestFile;
-        # ----
+
+        # --- correlated lock entry
         lockEnt = ctx.lock.${ident};
       in
       {
@@ -67,14 +66,21 @@ let
             # If this should not update
             # Just return the locked entry
             lockEnt.locked;
-        inherit url dependencies;
+        inherit url;
+
+        dependencies = collectLockEntries {
+          path = currPath;
+          lock = ctx.lock.${ident}.dependencies or { };
+        } optManifestFile;
       }
 
     ) (manifest.dependencies or { });
+
   result = collectLockEntries {
     path = [ ];
     lock = currentLock;
-  } manifest;
+  } rootManifest;
+
 in
 result
 )
