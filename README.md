@@ -46,6 +46,13 @@ You should take a look at all files that exists. Before reading further
 - `entrypoint.nix`
 - ...
 
+## Limitations
+
+- Since this tool uses `fetchTree` - the fetcher inside flakes - it is limited to fetching sources that are supported by flakes.
+- Currently verbose lockfile
+- Requires the `importer.nix` shim. - When using flakes that is hidden inside nix.
+- nix commands require `-f` flag / or a flake.nix compat shim (see [nix commands](#nix-commands) )
+
 ---
 
 ## Eval Groups
@@ -106,6 +113,8 @@ in
 
 ## Dependency overrides
 
+🚧🚧🚧 Under construction 🚧🚧🚧
+
 By default mana will respect the upstream manifest.
 But it will initially re-lock all dependencies locally.
 
@@ -148,4 +157,47 @@ rec {
 
 ---
 
-💎
+## nix-commands
+
+Often we want our tools to be runnable / buildable by people just entering `nix build` or `nix run`.
+These experimental commands are only natively compatible with flakes. - They require a `flake.nix` -
+When using other files they require passing `-f <filename> attrName`
+
+One possible way to get a more native experience is to create a `flake.nix` shim that re-exposes your runnable packages.
+
+```nix
+# flake.nix
+# shim for nix run compat
+{
+  outputs =
+    _:
+    let
+      systems = [
+        "aarch64-linux"
+        "x86_64-linux"
+
+        "x86_64-darwin"
+        "aarch64-darwin"
+      ];
+    in
+    {
+      packages = builtins.builtins.listToAttrs (
+        map (system: {
+          name = system;
+          value =
+            let
+              self = import ./default.nix { inherit system; };
+            in
+            self
+            // {
+              # The default package
+              # for 'nix run'
+              default = self.hello-world;
+            };
+        }) systems
+      );
+    };
+}
+```
+
+---
