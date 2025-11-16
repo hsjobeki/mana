@@ -39,11 +39,11 @@
 
 
         # Convert arguments to Nix attrset: { "foo" = null; "bar" = null; }
-        nix-instantiate --eval --strict --json \
+        nix --extra-experimental-features nix-command eval --refresh --json \
             --arg cwd "$(pwd)" \
             --arg updates "$nix_attrset" \
-            -A result \
-            ${../../scripts/update.nix} \
+            -f ${../../scripts/update.nix} \
+            result \
             | jq -S '.' > next_lock.json
 
         # verify the next lock file
