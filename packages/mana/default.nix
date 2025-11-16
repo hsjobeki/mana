@@ -20,7 +20,7 @@
         mkdir -p nix
         nix-instantiate --eval --strict --json --arg cwd "$(pwd)" ${../../scripts/lock.nix} \
             | jq -S '.' > lock.json
-        chmod +w -R nix
+        chmod -R +w nix
         echo "lock.json updated"
     }
 
