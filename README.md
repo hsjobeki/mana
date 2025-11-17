@@ -13,7 +13,7 @@ Mana is a simple approach that solves dependency locking and injection in a simp
 nix run github:hsjobeki/mana -- init
 ```
 
-This will create a all files to get you started:
+This will create all files to get you started:
 
 - `mana.nix`: A manafest to describe your project
 - `default.nix` Your default entrypoint for the nix cli and repl
@@ -113,10 +113,8 @@ in
 
 ## Dependency overrides
 
-🚧🚧🚧 Under construction 🚧🚧🚧
-
 By default mana will respect the upstream manifest.
-But it will initially re-lock all dependencies locally.
+BUT it will initially re-lock all dependencies locally.
 
 Often you want to reduce the number of nixpkgs downloads by forcing upstream to use your own version.
 
@@ -132,7 +130,10 @@ rec {
     treefmt-nix.url = "github:numtide/treefmt-nix";
   };
 
-  transitiveOverrides = {
+  # overrides 'nixpkgs' of 'treefmt-nix'
+  # and other nested occurences of 'nixpkgs' recursively
+  # DOESNT override <root>.nixpkgs
+  transitiveOverrides = deps: deps // {
     nixpkgs = dependencies.nixpkgs;
   };
 }
@@ -181,7 +182,7 @@ One possible way to get a more native experience is to create a `flake.nix` shim
       ];
     in
     {
-      packages = builtins.builtins.listToAttrs (
+      packages = builtins.listToAttrs (
         map (system: {
           name = system;
           value =

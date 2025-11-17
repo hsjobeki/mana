@@ -69,11 +69,13 @@ let
       enabledGroupsFor = builtins.zipAttrsWith (n: vs: builtins.concatLists vs) (
         builtins.attrValues manifest'.groups
       );
+      transitiveOverrides = (manifest.transitiveOverrides or { }) // ctx.transitiveOverrides;
 
       mapped = builtins.mapAttrs (
         ident: enabledGroups:
         let
           spec = manifest.dependencies.${ident};
+
           currPath = ctx.path ++ [ ident ];
           shouldUpdate = updateAll || hasAttrPath currPath updates;
           # ---
@@ -87,8 +89,26 @@ let
 
           manifestWithDefaults = getManifest optManifestFile;
 
-          enabledManifest = (debug "default ${toString currPath}" manifestWithDefaults) // {
+          enabledManifest = manifestWithDefaults // {
+            #
             groups = filterAttrs (n: _: builtins.elem n enabledGroups) manifestWithDefaults.groups;
+
+            dependencies =
+              let
+                # With transitive overrides
+                dependencies' =
+                  if (manifest ? transitiveOverrides) then
+                    manifest.transitiveOverrides manifestWithDefaults.dependencies
+                  else
+                    manifestWithDefaults.dependencies;
+                # With local overrides
+                dependencies'' =
+                  if (manifest.dependencies.${ident} ? overrides) then
+                    manifest.dependencies.${ident}.overrides dependencies'
+                  else
+                    dependencies';
+              in
+              dependencies'';
           };
           # --- correlated lock entry
           lockEnt = ctx.lock.${ident};
@@ -107,6 +127,7 @@ let
           dependencies = go {
             path = currPath;
             lock = ctx.lock.${ident}.dependencies or { };
+            inherit transitiveOverrides;
           } enabledManifest;
         }
       ) enabledGroupsFor;
@@ -116,7 +137,8 @@ let
   result = go {
     path = [ ];
     lock = currentLock;
-  } rootManifest;
+    transitiveOverrides = rootManifest.transitiveOverrides or { };
+  } (getManifest rootManifest);
 
 in
 {
