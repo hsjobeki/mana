@@ -12,7 +12,7 @@
       ];
     in
     {
-      packages = builtins.builtins.listToAttrs (
+      packages = builtins.listToAttrs (
         map (system: {
           name = system;
           value =
