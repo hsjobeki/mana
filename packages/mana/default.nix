@@ -8,8 +8,12 @@
     NIX_SOURCE_FILES="${../../template}"
 
     function init() {
-        set -ef -o pipefail
+        set -efu -o pipefail
+
+        # Enable globbing for the copy command
+        set +f
         cp -rf "$NIX_SOURCE_FILES"/* .
+
         mkdir -p nix
         cp ${../../nix/importer.nix} ./nix/importer.nix
         echo "Mana initialized 💎"
