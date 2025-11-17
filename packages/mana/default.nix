@@ -20,15 +20,6 @@
         chmod -R +w .
     }
 
-    function lock() {
-        set -efu -o pipefail
-        echo "Generating mana lock.json ◇◇◇◇"
-        mkdir -p nix
-        nix-instantiate --eval --strict --json --arg cwd "$(pwd)" ${../../scripts/lock.nix} \
-            | jq -S '.' > lock.json
-        echo "lock.json updated"
-    }
-
     function update() {
         set -efu -o pipefail
         local nix_attrset
@@ -64,15 +55,12 @@
         init)
             init
             ;;
-        lock)
-            lock
-            ;;
         update)
             shift
             update "$@"
             ;;
         *)
-            echo "Usage: $0 {init|lock|update}"
+            echo "Usage: $0 {init|update}"
             exit 1
             ;;
     esac

@@ -25,10 +25,10 @@ This will create all files to get you started:
 ### Next Step: Lock all dependencies
 
 ```sh
-nix run github:hsjobeki/mana -- lock
+nix run github:hsjobeki/mana -- update
 ```
 
-Creates a nix/lock.json that pins down all dependencies
+Creates a lock.json that pins down all dependencies
 
 Done ⚡️
 
