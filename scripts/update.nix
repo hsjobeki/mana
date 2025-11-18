@@ -52,24 +52,35 @@ let
     pred: set:
     removeAttrs set (builtins.filter (name: !pred name set.${name}) (builtins.attrNames set));
 
+  id = x: x;
+
   getManifest =
     manifest:
     manifest
     // {
+      # dependencies = manifest.dependencies or {};
+      dependencies = builtins.mapAttrs (
+        n: dep:
+        dep
+        // {
+          overrides = dep.overrides or (id);
+        }
+      ) (manifest.dependencies or { });
       groups =
         manifest.groups or {
           eval = builtins.mapAttrs (n: v: [ "eval" ]) (manifest.dependencies or { });
         };
+      transitiveOverrides = manifest.transitiveOverrides or (id);
     };
 
   go =
     ctx: manifest:
+    # assert debug "${builtins.toJSON ctx.transitiveOverrides}" true;
     let
       manifest' = getManifest manifest;
       enabledGroupsFor = builtins.zipAttrsWith (n: vs: builtins.concatLists vs) (
         builtins.attrValues manifest'.groups
       );
-      transitiveOverrides = (manifest.transitiveOverrides or { }) // ctx.transitiveOverrides;
 
       mapped = builtins.mapAttrs (
         ident: enabledGroups:
@@ -89,26 +100,16 @@ let
 
           manifestWithDefaults = getManifest optManifestFile;
 
+          # Always override
+          # default is a no-op
+          transitiveOverrides =
+            (manifest.transitiveOverrides manifestWithDefaults.dependencies) // ctx.transitiveOverrides;
+
           enabledManifest = manifestWithDefaults // {
-            #
+
             groups = filterAttrs (n: _: builtins.elem n enabledGroups) manifestWithDefaults.groups;
 
-            dependencies =
-              let
-                # With transitive overrides
-                dependencies' =
-                  if (manifest ? transitiveOverrides) then
-                    manifest.transitiveOverrides manifestWithDefaults.dependencies
-                  else
-                    manifestWithDefaults.dependencies;
-                # With local overrides
-                dependencies'' =
-                  if (manifest.dependencies.${ident} ? overrides) then
-                    manifest.dependencies.${ident}.overrides dependencies'
-                  else
-                    dependencies';
-              in
-              dependencies'';
+            dependencies = manifest.dependencies.${ident}.overrides transitiveOverrides;
           };
           # --- correlated lock entry
           lockEnt = ctx.lock.${ident};
@@ -137,7 +138,7 @@ let
   result = go {
     path = [ ];
     lock = currentLock;
-    transitiveOverrides = rootManifest.transitiveOverrides or { };
+    transitiveOverrides = { };
   } (getManifest rootManifest);
 
 in
