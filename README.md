@@ -113,12 +113,13 @@ in
 
 ## Dependency overrides
 
-By default mana will respect the upstream manifest.
-BUT it will initially re-lock all dependencies locally.
+By default, mana respects upstream manifests but re-locks all dependencies locally.
 
-Often you want to reduce the number of nixpkgs downloads by forcing upstream to use your own version.
+You often want to reduce nixpkgs downloads by forcing dependencies to use your pinned version.
 
-That can be done as follows:
+### Transitive Overrides
+
+Use transitiveOverrides to override dependencies throughout the entire dependency tree:
 
 ```nix
 # mana.nix
@@ -130,16 +131,22 @@ rec {
     treefmt-nix.url = "github:numtide/treefmt-nix";
   };
 
-  # overrides 'nixpkgs' of 'treefmt-nix'
-  # and other nested occurences of 'nixpkgs' recursively
-  # DOESNT override <root>.nixpkgs
+  # Forces all nested dependencies to use your nixpkgs version
   transitiveOverrides = deps: deps // {
     nixpkgs = dependencies.nixpkgs;
   };
 }
 ```
 
-You can also apply granular overrides:
+This overrides nixpkgs in:
+
+- treefmt-nix's dependencies
+- Any transitive dependencies (dependencies of dependencies)
+- **Does not** override your root-level nixpkgs
+
+### Local Overrides
+
+For granular control over specific dependencies, use local `overrides`:
 
 ```nix
 # mana.nix
@@ -155,6 +162,67 @@ rec {
   };
 }
 ```
+
+### Override Precedence
+
+Mana uses a two-level precedence system:
+
+- At the root level (lenient mode):
+
+  Local `overrides` win over `transitiveOverrides` (`overrides > transitiveOverrides`)
+  Lets you customize immediate dependencies while setting defaults for the tree
+
+- For all nested dependencies (strict mode):
+
+  `transitiveOverrides` win over local `overrides`  (`transitiveOverrides > overrides`)
+  Ensures your pins are enforced throughout the dependency tree
+
+**Example**:
+
+The following example demonstrates how the override system works:
+
+```nix
+# Root mana.nix
+rec {
+  dependencies = {
+    nixpkgs.url = "example:v25.05";
+    utils.url = "example:v1.0";
+
+    dep-a.url = "example:dep-a";
+    dep-a.overrides = deps: deps // {
+      nixpkgs.url = "example:v-unstable";  # ✓ Takes effect (root level is lenient)
+    };
+  };
+
+  transitiveOverrides = deps: deps // {
+    nixpkgs.url = "example:v25.05";        # Enforce for nested deps
+    utils.url = "example:v1.0";            # Enforce for nested deps
+  };
+}
+```
+
+```nix
+# dep-a's mana.nix
+{
+  dependencies = {
+    nixpkgs.url = "example:v-old";
+    utils.url = "example:v-old";
+
+    dep-b.url = "example:dep-b";
+    dep-b.overrides = deps: deps // {
+      nixpkgs.url = "example:v-unstable";  # ✗ Ignored (strict mode)
+      utils.url = "example:v2.0";          # ✗ Ignored (strict mode)
+    };
+  };
+}
+```
+
+Results:
+
+- Root's `nixpkgs` → `example:v25.05` (root's own dependency)
+- Root's `dep-a` gets `nixpkgs` → `example:v-unstable` (local override at root)
+- `dep-a.dep-b` gets `nixpkgs` → `example:v25.05` (root's transitive override enforced)
+- `dep-a.dep-b` gets `utils` → `example:v1.0` (root's transitive override enforced)
 
 ---
 

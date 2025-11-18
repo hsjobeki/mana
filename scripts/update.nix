@@ -52,6 +52,26 @@ let
     pred: set:
     removeAttrs set (builtins.filter (name: !pred name set.${name}) (builtins.attrNames set));
 
+  validateMode =
+    mode:
+    let
+      validModes = [
+        "lenient"
+        "strict"
+      ];
+    in
+    if builtins.elem mode validModes then
+      mode
+    else
+      throw ''
+        Invalid transitiveOverrideMode: "${mode}"
+
+        Valid modes are: ${builtins.concatStringsSep ", " (map (m: ''"${m}"'') validModes)}
+
+        - "lenient": Local overrides take precedence over transitive overrides
+        - "strict":  Transitive overrides take precedence over local overrides
+      '';
+
   id = x: x;
 
   getManifest =
@@ -100,16 +120,31 @@ let
 
           manifestWithDefaults = getManifest optManifestFile;
 
-          # Always override
-          # default is a no-op
-          transitiveOverrides =
-            (manifest.transitiveOverrides manifestWithDefaults.dependencies) // ctx.transitiveOverrides;
+          mode = validateMode ctx.transitiveOverrideMode;
+
+          combined =
+            if mode == "strict" then
+              rec {
+                local = (manifest.dependencies.${ident}.overrides manifestWithDefaults.dependencies);
+                transitiveOverrides = (manifest.transitiveOverrides local) // ctx.transitiveOverrides;
+                deps = transitiveOverrides;
+              }
+            else if mode == "lenient" then
+              rec {
+                transitiveOverrides =
+                  (manifest.transitiveOverrides manifestWithDefaults.dependencies) // ctx.transitiveOverrides;
+                deps = manifest.dependencies.${ident}.overrides transitiveOverrides;
+              }
+            else
+              # This branch should never happen
+              # due to strictness of 'validateMode'
+              abort "Unsupported overrideMode: ${mode}";
 
           enabledManifest = manifestWithDefaults // {
 
             groups = filterAttrs (n: _: builtins.elem n enabledGroups) manifestWithDefaults.groups;
 
-            dependencies = manifest.dependencies.${ident}.overrides transitiveOverrides;
+            dependencies = combined.deps;
           };
           # --- correlated lock entry
           lockEnt = ctx.lock.${ident};
@@ -128,7 +163,8 @@ let
           dependencies = go {
             path = currPath;
             lock = ctx.lock.${ident}.dependencies or { };
-            inherit transitiveOverrides;
+            inherit (combined) transitiveOverrides;
+            transitiveOverrideMode = "strict"; # transitiveOverrides > localOverrides
           } enabledManifest;
         }
       ) enabledGroupsFor;
@@ -139,6 +175,8 @@ let
     path = [ ];
     lock = currentLock;
     transitiveOverrides = { };
+    # Allow local overrides to propagate
+    transitiveOverrideMode = "lenient"; # localOverrides > transitiveOverrides
   } (getManifest rootManifest);
 
 in
