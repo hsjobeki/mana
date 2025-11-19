@@ -37,7 +37,7 @@
         nix --extra-experimental-features nix-command eval --refresh --json \
             --arg cwd "$(pwd)" \
             --arg updates "$nix_attrset" \
-            -f ${../../scripts/update.nix} \
+            -f ${../..}/scripts/update.nix \
             result \
             | jq -S '.' > next_lock.json
 

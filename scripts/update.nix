@@ -3,101 +3,22 @@
   updates ? { },
 }:
 let
-  debug = msg: v: builtins.trace "${msg} ${(builtins.toJSON v)}" v;
+  inherit (import ../nix/lib.nix)
+    computeOverrides
+    hasAttrPath
+    filterAttrs
+    normalizeManifest
+    ;
 
   updateAll = updates == { };
 
   rootManifest = import (cwd + "/mana.nix");
   currentLock = builtins.fromJSON (builtins.readFile (cwd + "/lock.json"));
-  # Checks if a path of attribute names exists
-  hasAttrPath =
-    path: attrs:
-    let
-      # result is { success = bool; current = attrset or null }
-      result =
-        builtins.foldl'
-          (
-            acc: part:
-            if !acc.success then
-              acc # already failed, pass through
-            else if acc.current ? ${part} then
-              {
-                success = true;
-                current = acc.current.${part};
-              }
-            else
-              {
-                success = false;
-                current = null;
-              }
-          )
-          {
-            success = true;
-            current = attrs;
-          }
-          path;
-    in
-    result.success;
-
-  # genAttrs =
-  #   list: f:
-  #   builtins.listToAttrs (
-  #     map (name: {
-  #       inherit name;
-  #       value = f name;
-  #     }) list
-  #   );
-
-  filterAttrs =
-    pred: set:
-    removeAttrs set (builtins.filter (name: !pred name set.${name}) (builtins.attrNames set));
-
-  validateMode =
-    mode:
-    let
-      validModes = [
-        "lenient"
-        "strict"
-      ];
-    in
-    if builtins.elem mode validModes then
-      mode
-    else
-      throw ''
-        Invalid transitiveOverrideMode: "${mode}"
-
-        Valid modes are: ${builtins.concatStringsSep ", " (map (m: ''"${m}"'') validModes)}
-
-        - "lenient": Local overrides take precedence over transitive overrides
-        - "strict":  Transitive overrides take precedence over local overrides
-      '';
-
-  id = x: x;
-
-  getManifest =
-    manifest:
-    manifest
-    // {
-      # dependencies = manifest.dependencies or {};
-      dependencies = builtins.mapAttrs (
-        n: dep:
-        dep
-        // {
-          overrides = dep.overrides or (id);
-        }
-      ) (manifest.dependencies or { });
-      groups =
-        manifest.groups or {
-          eval = builtins.mapAttrs (n: v: [ "eval" ]) (manifest.dependencies or { });
-        };
-      transitiveOverrides = manifest.transitiveOverrides or (id);
-    };
 
   go =
     ctx: manifest:
-    # assert debug "${builtins.toJSON ctx.transitiveOverrides}" true;
     let
-      manifest' = getManifest manifest;
+      manifest' = normalizeManifest manifest;
       enabledGroupsFor = builtins.zipAttrsWith (n: vs: builtins.concatLists vs) (
         builtins.attrValues manifest'.groups
       );
@@ -118,32 +39,24 @@ let
           nestedManifestFile = "${fetchResult}/mana.nix";
           optManifestFile = if builtins.pathExists nestedManifestFile then import nestedManifestFile else { };
 
-          manifestWithDefaults = getManifest optManifestFile;
+          nestedManifest = normalizeManifest optManifestFile;
 
-          mode = validateMode ctx.transitiveOverrideMode;
+          combined = computeOverrides {
+            mode = ctx.transitiveOverrideMode;
+            localOverrideFn = manifest.dependencies.${ident}.overrides;
+            transitiveOverrideFn = manifest.transitiveOverrides;
+            ctxTransitiveOverrides = ctx.transitiveOverrides;
+            baseDeps = nestedManifest.dependencies;
+          };
 
-          combined =
-            if mode == "strict" then
-              rec {
-                local = (manifest.dependencies.${ident}.overrides manifestWithDefaults.dependencies);
-                transitiveOverrides = (manifest.transitiveOverrides local) // ctx.transitiveOverrides;
-                deps = transitiveOverrides;
-              }
-            else if mode == "lenient" then
-              rec {
-                transitiveOverrides =
-                  (manifest.transitiveOverrides manifestWithDefaults.dependencies) // ctx.transitiveOverrides;
-                deps = manifest.dependencies.${ident}.overrides transitiveOverrides;
-              }
-            else
-              # This branch should never happen
-              # due to strictness of 'validateMode'
-              abort "Unsupported overrideMode: ${mode}";
-
-          enabledManifest = manifestWithDefaults // {
-
-            groups = filterAttrs (n: _: builtins.elem n enabledGroups) manifestWithDefaults.groups;
-
+          /**
+            The manifest of the <ident> dependency
+            with
+              - groups enabled
+              - dependencies overriden
+          */
+          enabledManifest = nestedManifest // {
+            groups = filterAttrs (n: _: builtins.elem n enabledGroups) nestedManifest.groups;
             dependencies = combined.deps;
           };
           # --- correlated lock entry
@@ -177,7 +90,7 @@ let
     transitiveOverrides = { };
     # Allow local overrides to propagate
     transitiveOverrideMode = "lenient"; # localOverrides > transitiveOverrides
-  } (getManifest rootManifest);
+  } (normalizeManifest rootManifest);
 
 in
 {
