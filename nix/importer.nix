@@ -3,13 +3,13 @@ let
     {
       lock,
       groups,
-      manafest,
+      manifest,
     }:
     let
       defaultGroups = {
-        eval = builtins.mapAttrs (n: v: [ ]) manafest.dependencies;
+        eval = builtins.mapAttrs (n: v: [ ]) manifest.dependencies;
       };
-      availableGroups = manafest.groups or defaultGroups;
+      availableGroups = manifest.groups or defaultGroups;
       # { {groupName} }
       groupsByName = builtins.zipAttrsWith (name: vs: builtins.concatMap (v: v.groups) vs) (
         map (groupName: availableGroups.${groupName}) groups
@@ -27,21 +27,21 @@ let
             "shortRev"
           ])
         );
-        depManafest = "${source}/mana.nix";
-        manafestExists = builtins.pathExists depManafest;
-        optManafest = if manafestExists then import depManafest else { };
+        depManifest = "${source}/mana.nix";
+        manifestExists = builtins.pathExists depManifest;
+        optManifest = if manifestExists then import depManifest else { };
         scope = (
           importTree {
             groups = groupsByName.${ident};
-            manafest = optManafest;
+            manifest = optManifest;
             lock = lockEnt.dependencies;
           }
         );
       in
       if enabled then
-        if manafestExists then
+        if manifestExists then
           let
-            f = import optManafest.entrypoint;
+            f = import optManifest.entrypoint;
           in
           f (builtins.intersectAttrs (builtins.functionArgs f) scope)
         else
@@ -99,14 +99,14 @@ let
   root =
     { groups ? [ "eval" ] }:
     let
-      manafest = import ../mana.nix;
+      manifest = import ../mana.nix;
       scope = (
         importTree {
-          inherit groups manafest;
+          inherit groups manifest;
           lock = builtins.fromJSON (builtins.readFile ../lock.json);
         }
       );
-      f = import manafest.entrypoint;
+      f = import manifest.entrypoint;
     in
     f (builtins.intersectAttrs (builtins.functionArgs f) scope);
 in
