@@ -2,17 +2,18 @@
   "nixpkgs": {
     "args": {
       "owner": "nixos",
+      "ref": "nixos-unstable",
       "repo": "nixpkgs",
       "type": "github"
     },
     "dependencies": {},
     "locked": {
-      "lastModified": 1763198477,
-      "lastModifiedDate": "20251115092117",
-      "narHash": "sha256-F5JUe1q7ej7SPTyh/UXc8WVN+i9ZkfUmbsX3gpKNvlw=",
-      "rev": "80cb6c4248091bae5452136c3abcc782d96122e9",
-      "shortRev": "80cb6c4"
+      "lastModified": 1763421233,
+      "lastModifiedDate": "20251117231353",
+      "narHash": "sha256-Stk9ZYRkGrnnpyJ4eqt9eQtdFWRRIvMxpNRf4sIegnw=",
+      "rev": "89c2b2330e733d6cdb5eae7b899326930c2c0648",
+      "shortRev": "89c2b23"
     },
-    "url": "github:nixos/nixpkgs"
+    "url": "github:nixos/nixpkgs/nixos-unstable"
   }
 }
