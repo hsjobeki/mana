@@ -4,93 +4,41 @@
 }:
 let
   inherit (import ../nix/lib.nix)
-    computeOverrides
-    hasAttrPath
-    filterAttrs
     normalizeManifest
+    fetchLockEntries'
     ;
-
-  updateAll = updates == { };
 
   rootManifest = import (cwd + "/mana.nix");
   currentLock = builtins.fromJSON (builtins.readFile (cwd + "/lock.json"));
 
-  go =
-    ctx: manifest:
+  fetchLockEntries = fetchLockEntries' {
+    inherit (builtins) fetchTree;
+    inherit
+      getDependencyManifest
+      updates
+      ;
+    self = fetchLockEntries;
+  };
+
+  getDependencyManifest =
+    source:
     let
-      manifest' = normalizeManifest manifest;
-      enabledGroupsFor = builtins.zipAttrsWith (n: vs: builtins.concatLists vs) (
-        builtins.attrValues manifest'.groups
-      );
+      # This is not IFD, because source is from fetchTree
+      # It should have the same performance impact however
+      nestedManifestFile = "${source}/mana.nix";
+      optManifestFile = if builtins.pathExists nestedManifestFile then import nestedManifestFile else { };
 
-      mapped = builtins.mapAttrs (
-        ident: enabledGroups:
-        let
-          spec = manifest.dependencies.${ident};
-
-          currPath = ctx.path ++ [ ident ];
-          shouldUpdate = updateAll || hasAttrPath currPath updates;
-          # ---
-          inherit (spec) url;
-          fetchTreeArgs = (builtins.parseFlakeRef url) // (spec.args or { });
-          fetchResult = fetchTree fetchTreeArgs;
-
-          # --- next manifest
-          nestedManifestFile = "${fetchResult}/mana.nix";
-          optManifestFile = if builtins.pathExists nestedManifestFile then import nestedManifestFile else { };
-
-          nestedManifest = normalizeManifest optManifestFile;
-
-          combined = computeOverrides {
-            mode = ctx.transitiveOverrideMode;
-            localOverrideFn = manifest.dependencies.${ident}.overrides;
-            transitiveOverrideFn = manifest.transitiveOverrides;
-            ctxTransitiveOverrides = ctx.transitiveOverrides;
-            baseDeps = nestedManifest.dependencies;
-          };
-
-          /**
-            The manifest of the <ident> dependency
-            with
-              - groups enabled
-              - dependencies overriden
-          */
-          enabledManifest = nestedManifest // {
-            groups = filterAttrs (n: _: builtins.elem n enabledGroups) nestedManifest.groups;
-            dependencies = combined.deps;
-          };
-          # --- correlated lock entry
-          lockEnt = ctx.lock.${ident};
-        in
-        {
-          args = fetchTreeArgs;
-          locked =
-            if shouldUpdate then
-              removeAttrs fetchResult [ "outPath" ]
-            else
-              # If this should not update
-              # Just return the locked entry
-              lockEnt.locked;
-          inherit url;
-
-          dependencies = go {
-            path = currPath;
-            lock = ctx.lock.${ident}.dependencies or { };
-            inherit (combined) transitiveOverrides;
-            transitiveOverrideMode = "strict"; # transitiveOverrides > localOverrides
-          } enabledManifest;
-        }
-      ) enabledGroupsFor;
+      nestedManifest = normalizeManifest { } optManifestFile;
     in
-    mapped;
+    nestedManifest;
 
-  result = go {
+  result = fetchLockEntries {
     path = [ ];
     lock = currentLock;
     transitiveOverrides = { };
     # Allow local overrides to propagate
     transitiveOverrideMode = "lenient"; # localOverrides > transitiveOverrides
-  } (normalizeManifest rootManifest);
+  } (normalizeManifest { } rootManifest);
 
 in
 {

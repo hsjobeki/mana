@@ -1,40 +1,16 @@
 rec {
-  /**
-    Checks if a path of attribute names exists
 
-    Example:
-
-    hasAttrPath [ "foo" "bar" ] { foo.bar = 1; }
-    => true
-  */
-  hasAttrPath =
-    path: attrs:
+  getAttrByPath =
+    path: default: attrs:
     let
-      # result :: { success = bool; current = attrset; }
-      result =
-        builtins.foldl'
-          (
-            acc: part:
-            if !acc.success then
-              acc # already failed, pass through
-            else if acc.current ? ${part} then
-              {
-                success = true;
-                current = acc.current.${part};
-              }
-            else
-              {
-                success = false;
-                current = null;
-              }
-          )
-          {
-            success = true;
-            current = attrs;
-          }
-          path;
+      go =
+        ns: attrs:
+        if builtins.length ns > 0 then
+          if attrs ? ${builtins.head ns} then go (builtins.tail ns) attrs.${builtins.head ns} else default
+        else
+          attrs;
     in
-    result.success;
+    go path attrs;
 
   /**
     filters an attribute set based on a predicate
@@ -70,6 +46,9 @@ rec {
     ```
   */
   normalizeManifest =
+    {
+      defaultFn ? id,
+    }:
     manifest:
     manifest
     // {
@@ -78,14 +57,14 @@ rec {
         n: dep:
         dep
         // {
-          overrides = dep.overrides or (id);
+          overrides = dep.overrides or (defaultFn);
         }
       ) (manifest.dependencies or { });
       groups =
         manifest.groups or {
           eval = builtins.mapAttrs (n: v: [ "eval" ]) (manifest.dependencies or { });
         };
-      transitiveOverrides = manifest.transitiveOverrides or (id);
+      transitiveOverrides = manifest.transitiveOverrides or (defaultFn);
     };
 
   /**
@@ -102,8 +81,10 @@ rec {
       baseDeps,
     }:
     if mode == "strict" then
-      rec {
+      let
         local = localOverrideFn baseDeps;
+      in
+      rec {
         transitiveOverrides = (transitiveOverrideFn local) // ctxTransitiveOverrides;
         deps = transitiveOverrides;
       }
@@ -135,4 +116,78 @@ rec {
     Returns the value 'v'
   */
   debug = msg: v: builtins.trace "${msg} ${(builtins.toJSON v)}" v;
+
+  # Parametrized for better unit-testing
+  fetchLockEntries' =
+    {
+      fetchTree,
+      getDependencyManifest,
+      self,
+      updates,
+    }:
+    ctx: manifest:
+    let
+      updateAll = updates == { };
+      # { <name> :: [ "eval" ... ] }
+      enabledGroupsFor = builtins.zipAttrsWith (n: vs: builtins.concatLists vs) (
+        builtins.attrValues manifest.groups
+      );
+
+      mapped = builtins.mapAttrs (
+        ident: enabledGroups:
+        let
+          spec = manifest.dependencies.${ident};
+
+          currPath = ctx.path ++ [ ident ];
+          shouldUpdate = updateAll || (getAttrByPath currPath {} updates == null);
+          # ---
+          inherit (spec) url;
+          fetchTreeArgs = (builtins.parseFlakeRef url) // (spec.args or { });
+          fetchResult = fetchTree fetchTreeArgs;
+
+          # --- next manifest
+          childManifest = getDependencyManifest fetchResult;
+
+          combined = computeOverrides {
+            mode = ctx.transitiveOverrideMode;
+            localOverrideFn = manifest.dependencies.${ident}.overrides;
+            transitiveOverrideFn = manifest.transitiveOverrides;
+            ctxTransitiveOverrides = ctx.transitiveOverrides;
+            baseDeps = childManifest.dependencies;
+          };
+
+          /**
+            The manifest of the <ident> dependency
+            with
+              - groups enabled
+              - dependencies overriden
+          */
+          enabledManifest = childManifest // {
+            groups = filterAttrs (n: _: builtins.elem n enabledGroups) childManifest.groups;
+            dependencies = combined.deps;
+          };
+          # --- correlated lock entry
+          lockEnt = ctx.lock.${ident};
+        in
+        {
+          args = fetchTreeArgs;
+          locked =
+            if shouldUpdate then
+              removeAttrs fetchResult [ "outPath" ]
+            else
+              # If this should not update
+              # Just return the locked entry
+              lockEnt.locked;
+          inherit url;
+
+          dependencies = self {
+            path = currPath;
+            lock = ctx.lock.${ident}.dependencies or { };
+            inherit (combined) transitiveOverrides;
+            transitiveOverrideMode = "strict"; # transitiveOverrides > localOverrides
+          } enabledManifest;
+        }
+      ) enabledGroupsFor;
+    in
+    mapped;
 }
