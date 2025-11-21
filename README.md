@@ -15,11 +15,10 @@ nix run github:hsjobeki/mana -- init
 
 This will create all files to get you started:
 
-- `mana.nix`: A manafest to describe your project
+- `mana.nix`: A manifest to describe your project
 - `default.nix` Your default entrypoint for the nix cli and repl
-  see [groups](#eval-groups) for what it does.
 
-- `nix/importer.nix`: A vendored shim that
+- `nix/importer.nix`: A shim that
   takes care to inject the specified dependencies into the entrypoint
 
 ### Next Step: Lock all dependencies
@@ -63,7 +62,7 @@ Your user shouldn't have to download your CI tooling by default.
 
 That is a common painpoint with `flakes` currently leading to workarounds. In Mana this is a first class citizen.
 
-Unless specified in the `mana.nix` all dependencies are in the `eval` group
+Unless specified in the `mana.nix` all dependencies are in the `eval` group.
 
 ```nix
 # mana.nix
@@ -76,10 +75,15 @@ rec {
   };
 
   groups = {
+    # 'eval' is a reserved name
+    # Enabled by default
     eval = {
       nixpkgs = [ ];
     };
+    # Any other name is arbitrary
     dev = {
+      # If nixfmt-nix is a mana dependency
+      # This line enables "dev" and "eval" for it
       treefmt-nix = [ "eval" "dev" ];
     };
   }
