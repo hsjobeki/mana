@@ -1,4 +1,26 @@
 let
+  normalizeManifest =
+    {
+      defaultFn ? x: x,
+    }:
+    manifest:
+    manifest
+    // {
+      # dependencies = manifest.dependenc ies or {};
+      dependencies = builtins.mapAttrs (
+        n: dep:
+        dep
+        // {
+          overrides = dep.overrides or (defaultFn);
+        }
+      ) (manifest.dependencies or { });
+      groups =
+        manifest.groups or {
+          eval = builtins.mapAttrs (n: v: [ "eval" ]) (manifest.dependencies or { });
+        };
+      transitiveOverrides = manifest.transitiveOverrides or (defaultFn);
+    };
+
   importTree =
     {
       lock,
@@ -6,10 +28,8 @@ let
       manifest,
     }:
     let
-      defaultGroups = {
-        eval = builtins.mapAttrs (n: v: [ ]) manifest.dependencies;
-      };
-      availableGroups = manifest.groups or defaultGroups;
+      normalizedManifest = normalizeManifest { } manifest;
+      availableGroups = normalizedManifest.groups;
       # { {groupName} }
       groupsByName = builtins.zipAttrsWith (name: vs: builtins.concatMap (v: v.groups) vs) (
         map (groupName: availableGroups.${groupName}) groups
@@ -80,7 +100,9 @@ let
                 ${builtins.concatStringsSep "\n  " recommendedGroups}
 
               Example usage:
-                (import ./nix/importer.nix) [ "${builtins.head recommendedGroups}" ]
+                (import ./nix/importer.nix) {
+                   groups = [ "${builtins.head recommendedGroups}" ... ];
+                }
             ''
           else
             ''
@@ -97,7 +119,9 @@ let
     ) lock;
 
   root =
-    { groups ? [ "eval" ] }:
+    {
+      groups ? [ "eval" ],
+    }:
     let
       manifest = import ../mana.nix;
       scope = (
