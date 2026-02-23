@@ -50,7 +50,7 @@
         fi
     }
 
-    case "$1" in
+    case "''${1:-}" in
         init)
             init
             ;;
