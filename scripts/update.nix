@@ -40,7 +40,24 @@ let
     transitiveOverrideMode = "lenient"; # localOverrides > transitiveOverrides
   } (normalizeManifest { } rootManifest);
 
+    prettyJSON = indent: value:
+      let
+        spaces = builtins.concatStringsSep "" (builtins.genList (_: "  ") indent);
+        nextSpaces = spaces + "  ";
+      in
+      if builtins.isAttrs value then
+        "{\n" + builtins.concatStringsSep ",\n" (map (k:
+          "${nextSpaces}\"${k}\": ${prettyJSON (indent + 1) value.${k}}"
+        ) (builtins.attrNames value)) + "\n${spaces}}"
+      else if builtins.isList value then
+        "[\n" + builtins.concatStringsSep ",\n" (map (v:
+          "${nextSpaces}${prettyJSON (indent + 1) v}"
+        ) value) + "\n${spaces}]"
+      else
+        builtins.toJSON value;
+
+  # prettyJSON 0 result
 in
 {
-  inherit result;
+  result = prettyJSON 0 result;
 }

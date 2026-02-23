@@ -24,6 +24,7 @@
         set -efu -o pipefail
         local nix_attrset
 
+        # Convert arguments to Nix attrset: { "foo" = null; "bar" = null; }
         if [ $# -eq 0 ]; then
             nix_attrset=$(printf '{ }')
             echo "Updating all dependencies"
@@ -32,14 +33,12 @@
             echo "Updating dependencies: $*"
         fi
 
-
-        # Convert arguments to Nix attrset: { "foo" = null; "bar" = null; }
-        nix --extra-experimental-features nix-command eval --refresh --json \
+        # Call 'nix eval update.nix --json'
+        nix --extra-experimental-features nix-command eval --refresh --raw \
             --arg cwd "$(pwd)" \
             --arg updates "$nix_attrset" \
             -f ${../..}/scripts/update.nix \
-            result \
-            | jq -S '.' > next_lock.json
+            result > next_lock.json
 
         # verify the next lock file
         if jq -e . next_lock.json > /dev/null 2>&1; then
