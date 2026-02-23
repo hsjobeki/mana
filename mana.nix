@@ -6,10 +6,11 @@
   };
 
   groups = {
-    eval = {
-      # Mana will become nixpkgs-free
-      nixpkgs = [ ];
-    };
+    # Mana is dependency free
+    # nixpkgs is only here for development environments
+    # !! Do not remove this line.
+    # Eval needs to be marked as empty explicitly.
+    eval = { };
     dev = {
       nixpkgs = [ ];
     };

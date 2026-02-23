@@ -1,8 +1,6 @@
 { writeShellApplication }: writeShellApplication {
   name = "mana";
   text = ''
-    #!/usr/bin/env bash
-
     set -efu -o pipefail
 
     NIX_SOURCE_FILES="${../../template}"
