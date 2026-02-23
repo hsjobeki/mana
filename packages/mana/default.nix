@@ -40,8 +40,8 @@
             -f ${../..}/scripts/update.nix \
             result > next_lock.json
 
-        # verify the next lock file
-        if jq -e . next_lock.json > /dev/null 2>&1; then
+        # Verify the next lock file
+        if nix-instantiate --eval -E "builtins.fromJSON (builtins.readFile ./next_lock.json)" > /dev/null 2>&1; then
             mv next_lock.json lock.json
             echo "lock.json updated"
         else
