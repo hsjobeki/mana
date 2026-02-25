@@ -79,7 +79,23 @@ let
         );
       in
       if enabled then
-        if manifestExists then
+        let
+          # Consumer can override the entrypoint for this dependency
+          consumerSpec = normalizedManifest.dependencies.${ident} or { };
+          hasConsumerEntrypoint = consumerSpec ? entrypoint;
+          consumerEntrypoint = consumerSpec.entrypoint or null;
+        in
+        if hasConsumerEntrypoint && consumerEntrypoint == null then
+          source
+        else if hasConsumerEntrypoint then
+          let
+            f = import "${source}/${consumerEntrypoint}";
+          in
+          if builtins.isFunction f then
+            f (builtins.intersectAttrs (builtins.functionArgs f) scope)
+          else
+            f
+        else if manifestExists then
           let
             f = import optManifest.entrypoint;
           in
