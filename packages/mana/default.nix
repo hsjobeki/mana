@@ -5,8 +5,33 @@
 
     NIX_SOURCE_FILES="${../../template}"
 
+    function show_help() {
+        cat <<'EOF'
+mana 💎 - Dependency locking and injection for Nix
+
+Commands:
+  init      Initialize a new mana project in the current directory
+  update    Update locked dependencies
+  sync      Sync the local shim file(s) with the current mana version
+
+Run 'mana <command> --help' for details.
+EOF
+    }
+
     function init() {
         set -efu -o pipefail
+
+        if [[ "''${1:-}" == "--help" || "''${1:-}" == "-h" ]]; then
+            cat <<'EOF'
+Initialize a new mana project in the current directory.
+
+Creates the following files:
+mana.nix, entrypoint.nix, default.nix, nix/importer.nix.
+
+Usage: mana init
+EOF
+            return 0
+        fi
 
         # Enable globbing for the copy command
         set +f
@@ -20,6 +45,20 @@
 
     function update() {
         set -efu -o pipefail
+
+        if [[ "''${1:-}" == "--help" || "''${1:-}" == "-h" ]]; then
+            cat <<'EOF'
+Update locked dependencies.
+
+Usage: mana update [dep1 dep2 ...]
+
+Examples:
+  mana update            # update all
+  mana update nixpkgs    # update only nixpkgs
+EOF
+            return 0
+        fi
+
         local nix_attrset
 
         # Convert arguments to Nix attrset: { "foo" = null; "bar" = null; }
@@ -48,24 +87,45 @@
         fi
     }
 
-    function upgrade() {
+    function sync() {
+        if [[ "''${1:-}" == "--help" || "''${1:-}" == "-h" ]]; then
+            cat <<'EOF'
+Sync the importer shim (nix/importer.nix) with the current mana version.
+
+For upgrading your project get the latest version installed, then run this command.
+
+Usage: mana sync
+EOF
+            return 0
+        fi
+
         cp ${../../nix/importer.nix} ./nix/importer.nix
-        echo "Importer shim upgraded 💎"
+        echo "Importer shim updated 💎"
     }
 
     case "''${1:-}" in
         init)
-            init
+            shift
+            init "$@"
             ;;
         update)
             shift
             update "$@"
             ;;
-        upgrade)
-            upgrade
+        sync)
+            shift
+            sync "$@"
+            ;;
+        help|--help|-h)
+            show_help
+            ;;
+        "")
+            show_help
             ;;
         *)
-            echo "Usage: $0 {init|update|upgrade}"
+            echo "Unknown command: ''${1}"
+            echo ""
+            show_help
             exit 1
             ;;
     esac
