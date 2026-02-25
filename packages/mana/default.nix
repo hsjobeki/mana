@@ -48,6 +48,11 @@
         fi
     }
 
+    function upgrade() {
+        cp ${../../nix/importer.nix} ./nix/importer.nix
+        echo "Importer shim upgraded 💎"
+    }
+
     case "''${1:-}" in
         init)
             init
@@ -56,8 +61,11 @@
             shift
             update "$@"
             ;;
+        upgrade)
+            upgrade
+            ;;
         *)
-            echo "Usage: $0 {init|update}"
+            echo "Usage: $0 {init|update|upgrade}"
             exit 1
             ;;
     esac
