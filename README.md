@@ -90,6 +90,17 @@ in
 Using `default.nix`: `treefmt-nix` throws when accessed.
 Using `ci.nix`: `treefmt-nix` is available.
 
+```mermaid
+  graph TD
+      default.nix -->|eval| entrypoint.nix
+      dev.nix -->|eval, dev| entrypoint.nix
+      doc.nix -->|eval, doc| entrypoint.nix
+
+      entrypoint.nix --> Packages
+      entrypoint.nix --> Modules
+      entrypoint.nix --> Documentation
+```
+
 ## Sharing Dependencies
 
 By default, mana respects upstream manifests but re-locks all dependencies locally.
