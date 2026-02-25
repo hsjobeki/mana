@@ -81,6 +81,91 @@ in
   };
 
   ##
+  share = {
+    test_share_desugars_to_transitiveOverrides = {
+      expr =
+        let
+          manifest = lib.normalizeManifest { } {
+            dependencies = {
+              nixpkgs.url = "github:nixos/nixpkgs";
+              treefmt.url = "github:numtide/treefmt-nix";
+            };
+            share = [ "nixpkgs" ];
+          };
+          # Apply the generated transitiveOverrides to some child deps
+          childDeps = {
+            nixpkgs.url = "github:nixos/nixpkgs/old";
+            other.url = "github:other/other";
+          };
+        in
+        manifest.transitiveOverrides childDeps;
+      expected = {
+        nixpkgs.url = "github:nixos/nixpkgs";
+        other.url = "github:other/other";
+      };
+    };
+    test_share_ignores_missing = {
+      expr =
+        let
+          manifest = lib.normalizeManifest { } {
+            dependencies = {
+              nixpkgs.url = "github:nixos/nixpkgs";
+            };
+            share = [
+              "nixpkgs"
+              "nonexistent"
+            ];
+          };
+          childDeps = {
+            nixpkgs.url = "github:nixos/nixpkgs/old";
+          };
+        in
+        manifest.transitiveOverrides childDeps;
+      expected = {
+        nixpkgs.url = "github:nixos/nixpkgs";
+      };
+    };
+    test_share_empty = {
+      expr =
+        let
+          manifest = lib.normalizeManifest { defaultFn = "idFn"; } {
+            dependencies = {
+              nixpkgs.url = "github:nixos/nixpkgs";
+            };
+            share = [ ];
+          };
+        in
+        manifest.transitiveOverrides;
+      expected = "idFn";
+    };
+    test_share_composes_with_transitiveOverrides = {
+      expr =
+        let
+          manifest = lib.normalizeManifest { } {
+            dependencies = {
+              nixpkgs.url = "github:nixos/nixpkgs";
+            };
+            share = [ "nixpkgs" ];
+            transitiveOverrides =
+              deps:
+              deps
+              // {
+                extra = "injected";
+              };
+          };
+          childDeps = {
+            nixpkgs.url = "github:nixos/nixpkgs/old";
+          };
+        in
+        manifest.transitiveOverrides childDeps;
+      expected = {
+        nixpkgs.url = "github:nixos/nixpkgs";
+        extra = "injected";
+      };
+    };
+  };
+
+  ##
   computeOverrides = {
     test_no_op = {
       expr = lib.computeOverrides {

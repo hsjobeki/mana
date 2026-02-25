@@ -45,26 +45,61 @@ rec {
     };
     ```
   */
+  /**
+    Desugars `share` into a `transitiveOverrides` function.
+
+    `share` is a list of dependency names to share transitively.
+    It generates a function that overrides matching deps with the root's versions.
+
+    If both `share` and `transitiveOverrides` are present,
+    `share` is applied first, then `transitiveOverrides` on top.
+  */
+  shareToTransitiveOverrides =
+    dependencies: shareList:
+    let
+      shared = builtins.listToAttrs (
+        map (name: {
+          inherit name;
+          value = dependencies.${name};
+        }) (builtins.filter (name: dependencies ? ${name}) shareList)
+      );
+    in
+    deps: deps // shared;
+
   normalizeManifest =
     {
       defaultFn ? id,
     }:
     manifest:
+    let
+      dependencies = manifest.dependencies or { };
+      share = manifest.share or [ ];
+      hasShare = share != [ ];
+      explicitTransitiveOverrides = manifest.transitiveOverrides or defaultFn;
+      shareOverrides = shareToTransitiveOverrides dependencies share;
+
+      # If both share and transitiveOverrides are set,
+      # compose them: share first, then explicit on top
+      combinedTransitiveOverrides =
+        if hasShare then
+          deps: explicitTransitiveOverrides (shareOverrides deps)
+        else
+          explicitTransitiveOverrides;
+    in
     manifest
     // {
-      # dependencies = manifest.dependencies or {};
       dependencies = builtins.mapAttrs (
         n: dep:
         dep
         // {
           overrides = dep.overrides or (defaultFn);
         }
-      ) (manifest.dependencies or { });
+      ) dependencies;
       groups =
         manifest.groups or {
-          eval = builtins.mapAttrs (n: v: [ "eval" ]) (manifest.dependencies or { });
+          eval = builtins.mapAttrs (n: v: [ "eval" ]) dependencies;
         };
-      transitiveOverrides = manifest.transitiveOverrides or (defaultFn);
+      transitiveOverrides = combinedTransitiveOverrides;
     };
 
   /**

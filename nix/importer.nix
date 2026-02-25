@@ -4,21 +4,41 @@ let
       defaultFn ? x: x,
     }:
     manifest:
+    let
+      dependencies = manifest.dependencies or { };
+      share = manifest.share or [ ];
+      hasShare = share != [ ];
+      explicitTransitiveOverrides = manifest.transitiveOverrides or defaultFn;
+      shareOverrides =
+        let
+          shared = builtins.listToAttrs (
+            map (name: {
+              inherit name;
+              value = dependencies.${name};
+            }) (builtins.filter (name: dependencies ? ${name}) share)
+          );
+        in
+        deps: deps // shared;
+      combinedTransitiveOverrides =
+        if hasShare then
+          deps: explicitTransitiveOverrides (shareOverrides deps)
+        else
+          explicitTransitiveOverrides;
+    in
     manifest
     // {
-      # dependencies = manifest.dependenc ies or {};
       dependencies = builtins.mapAttrs (
         n: dep:
         dep
         // {
           overrides = dep.overrides or (defaultFn);
         }
-      ) (manifest.dependencies or { });
+      ) dependencies;
       groups =
         manifest.groups or {
-          eval = builtins.mapAttrs (n: v: [ "eval" ]) (manifest.dependencies or { });
+          eval = builtins.mapAttrs (n: v: [ "eval" ]) dependencies;
         };
-      transitiveOverrides = manifest.transitiveOverrides or (defaultFn);
+      transitiveOverrides = combinedTransitiveOverrides;
     };
 
   importTree =

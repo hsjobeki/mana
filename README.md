@@ -115,19 +115,19 @@ in
 }
 ```
 
-## Dependency overrides
+## Sharing Dependencies
 
 By default, mana respects upstream manifests but re-locks all dependencies locally.
 
 You often want to reduce nixpkgs downloads by forcing dependencies to use your pinned version.
 
-### Transitive Overrides
+### `share`
 
-Use transitiveOverrides to override dependencies throughout the entire dependency tree:
+Use `share` to list dependencies that should be shared with all transitive dependencies:
 
 ```nix
 # mana.nix
-rec {
+{
   entrypoint = ./entrypoint.nix;
 
   dependencies = {
@@ -135,10 +135,8 @@ rec {
     treefmt-nix.url = "github:numtide/treefmt-nix";
   };
 
-  # Forces all nested dependencies to use your nixpkgs version
-  transitiveOverrides = deps: deps // {
-    nixpkgs = dependencies.nixpkgs;
-  };
+  # treefmt-nix (and any deeper deps) will use YOUR nixpkgs
+  share = [ "nixpkgs" ];
 }
 ```
 
@@ -147,6 +145,8 @@ This overrides nixpkgs in:
 - treefmt-nix's dependencies
 - Any transitive dependencies (dependencies of dependencies)
 - **Does not** override your root-level nixpkgs
+
+NOTE: `share` is syntactic sugar for [transitiveOverrides](#transitiveoverrides)
 
 ### Local Overrides
 
@@ -167,23 +167,45 @@ rec {
 }
 ```
 
+### `transitiveOverrides`
+
+For advanced cases, `transitiveOverrides` gives you a function over the full dependency set:
+
+```nix
+# mana.nix
+rec {
+  entrypoint = ./entrypoint.nix;
+
+  dependencies = {
+    nixpkgs.url = "github:nixos/nixpkgs";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
+  };
+
+  transitiveOverrides = deps: deps // {
+    nixpkgs = dependencies.nixpkgs;
+  };
+}
+```
+
+`share = [ "nixpkgs" ]` is equivalent shorthand for the above.
+
+If both `share` and `transitiveOverrides` are set, `share` is applied first, then `transitiveOverrides` on top.
+
 ### Override Precedence
 
 Mana uses a two-level precedence system:
 
 - At the root level (lenient mode):
 
-  Local `overrides` win over `transitiveOverrides` (`overrides > transitiveOverrides`)
+  Local `overrides` win over `transitiveOverrides`/`share` (`overrides > transitiveOverrides`)
   Lets you customize immediate dependencies while setting defaults for the tree
 
 - For all nested dependencies (strict mode):
 
-  `transitiveOverrides` win over local `overrides`  (`transitiveOverrides > overrides`)
+  `transitiveOverrides`/`share` win over local `overrides`  (`transitiveOverrides > overrides`)
   Ensures your pins are enforced throughout the dependency tree
 
 **Example**:
-
-The following example demonstrates how the override system works:
 
 ```nix
 # Root mana.nix
@@ -198,10 +220,7 @@ rec {
     };
   };
 
-  transitiveOverrides = deps: deps // {
-    nixpkgs.url = "example:v25.05";        # Enforce for nested deps
-    utils.url = "example:v1.0";            # Enforce for nested deps
-  };
+  share = [ "nixpkgs" "utils" ];
 }
 ```
 
@@ -224,9 +243,9 @@ rec {
 Results:
 
 - Root's `nixpkgs` → `example:v25.05` (root's own dependency)
-- Root's `dep-a` gets `nixpkgs` → `example:v-unstable` (local override at root)
-- `dep-a.dep-b` gets `nixpkgs` → `example:v25.05` (root's transitive override enforced)
-- `dep-a.dep-b` gets `utils` → `example:v1.0` (root's transitive override enforced)
+- Root's `dep-a` gets `nixpkgs` → `example:v-unstable` (local override at root, lenient)
+- `dep-a.dep-b` gets `nixpkgs` → `example:v25.05` (root's share enforced, strict)
+- `dep-a.dep-b` gets `utils` → `example:v1.0` (root's share enforced, strict)
 
 ---
 
