@@ -28,13 +28,44 @@ Initialize a new mana project in the current directory.
 Creates the following files:
 mana.nix, entrypoint.nix, default.nix, nix/importer.nix.
 
-Usage: mana init
+Usage: mana init [--force]
+
+Options:
+  --force   Overwrite existing files
 EOF
             return 0
         fi
 
-        # Enable globbing for the copy command
+        local force=0
+        if [[ "''${1:-}" == "--force" ]]; then
+            force=1
+        fi
+        # Enable globbing for the conflict check
         set +f
+
+        # Check for conflicting files
+        local conflicts=()
+        for f in "$NIX_SOURCE_FILES"/*; do
+            local target="./$(basename "$f")"
+            if [ -e "$target" ]; then
+                conflicts+=("$target")
+            fi
+        done
+        if [ -e "./nix/importer.nix" ]; then
+            conflicts+=("./nix/importer.nix")
+        fi
+
+        if [ "''${#conflicts[@]}" -gt 0 ] && [ "$force" -eq 0 ]; then
+            echo "The following files already exist:"
+            for f in "''${conflicts[@]}"; do
+                echo "  $f"
+            done
+            echo ""
+            echo "Use 'mana init --force' to overwrite."
+            return 1
+        fi
+
+        # Proceed with copy
         cp -rf "$NIX_SOURCE_FILES"/* .
 
         mkdir -p nix
