@@ -1,49 +1,35 @@
 # Mana 💎
 
-Mana is a simple approach that solves dependency locking and injection in a simple and effective way.
+Mana solves dependency locking and injection
 
 - Its only few lines of bash ⚡️ nix
-- plural: Mana
+- Its better than flakes
 
-🚧🚧🚧 Under construction 🚧🚧🚧
-
-## Init
+## Quickstart
 
 ```sh
 nix run github:hsjobeki/mana -- init
-```
-
-This will create all files to get you started:
-
-- `mana.nix`: A manifest to describe your project
-- `default.nix` Your default entrypoint for the nix cli and repl
-
-- `nix/importer.nix`: A shim that
-  takes care to inject the specified dependencies into the entrypoint
-
-### Next Step: Lock all dependencies
-
-```sh
 nix run github:hsjobeki/mana -- update
 ```
 
 Creates a lock.json that pins down all dependencies
 
+Now you can build:
+
+`nix build -f default.nix hello`
+
 Done ⚡️
-
-To inspect
-
-`nix repl -f default.nix`
-```
-> hello
-«derivation /nix/store/f4yi9zbqnyld63j1bk89nqk7h409i0hh-hello.drv»
-```
 
 You should take a look at all files that exists. Before reading further
 
 - `mana.nix`
 - `entrypoint.nix`
 - ...
+
+> [!TIP]
+> For ergonomics install it on your system
+>
+> e.g. `environment.systemPackages [ mana ]`
 
 ## Limitations
 
@@ -52,21 +38,11 @@ You should take a look at all files that exists. Before reading further
 - Requires the `importer.nix` shim. - When using flakes that is hidden inside nix.
 - nix commands require `-f` flag / or a flake.nix compat shim (see [nix commands](#nix-commands) )
 
----
-
-## Eval Groups
-
-When developing you often want to provide tools to others.
-But at the same time you want to test and check using third party dependencies.
-Your user shouldn't have to download your CI tooling by default.
-
-That is a common painpoint with `flakes` currently leading to workarounds. In Mana this is a first class citizen.
-
-Unless specified in the `mana.nix` all dependencies are in the `eval` group.
+## Dev Dependencies
 
 ```nix
 # mana.nix
-rec {
+{
   entrypoint = ./entrypoint.nix;
 
   dependencies = {
@@ -75,45 +51,44 @@ rec {
   };
 
   groups = {
-    # 'eval' is a reserved name
-    # Enabled by default
     eval = {
       nixpkgs = [ ];
     };
-    # Any other name is arbitrary
     dev = {
-      # If nixfmt-nix is a mana dependency
-      # This line enables "dev" and "eval" for it
       treefmt-nix = [ "eval" "dev" ];
     };
-  }
+  };
 }
 ```
 
-If you create a seperate `ci.nix`
+`groups` control which dependencies are fetched. A dependency is only downloaded when it belongs to an enabled group. Without `groups`, everything goes into `eval` by default.
+
+Here `nixpkgs` is in `eval` (always fetched), while `treefmt-nix` is in `dev` (only fetched when requested).
+
+`default.nix` enables only `eval`. To also fetch dev dependencies:
 
 ```nix
 # ci.nix
-(import ./nix/importer.nix) { groups =  [ "eval" "dev" ]; }
+(import ./nix/importer.nix) { groups = [ "eval" "dev" ]; }
 ```
 
-Using `default.nix`: `treefmt-nix` will contain an error that throws when acessed - But
-using `ci.nix`: `treefmt-nix` will be present.
+There is one `entrypoint.nix` for all groups. Disabled dependencies throw on access:
 
 ```nix
 # entrypoint.nix
-{nixpkgs, treefmt-nix }:
-#
-{system ? builtins.currentSystem }:
+{ nixpkgs, treefmt-nix }:
+{ system ? builtins.currentSystem }:
 let
   pkgs = nixpkgs { inherit system; };
 in
 {
   packages.x = pkgs.callPackage ./. { };
-
-  checks.x = pkgs.callPackage ./. { inherit treefmt-nix; };
+  checks.formatting = pkgs.callPackage ./. { inherit treefmt-nix; };
 }
 ```
+
+Using `default.nix`: `treefmt-nix` throws when accessed.
+Using `ci.nix`: `treefmt-nix` is available.
 
 ## Sharing Dependencies
 
@@ -247,7 +222,44 @@ Results:
 - `dep-a.dep-b` gets `nixpkgs` → `example:v25.05` (root's share enforced, strict)
 - `dep-a.dep-b` gets `utils` → `example:v1.0` (root's share enforced, strict)
 
----
+## Custom Entrypoints & Raw sources
+
+By default, mana imports each dependency's `entrypoint` (from its `mana.nix`) or falls back to `default.nix`. You can override this per-dependency:
+
+### Raw source (no import)
+
+`entrypoint = null` disables the import
+
+```nix
+{
+  dependencies = {
+    nixpkgs.url = "github:nixos/nixpkgs";
+    nixpkgs.entrypoint = null;  # raw source path
+  };
+}
+```
+
+```nix
+# entrypoint.nix
+{ nixpkgs }:
+let
+  pkgs = import nixpkgs { system = "x86_64-linux"; };
+in
+pkgs.hello
+```
+
+### Custom file
+
+Use `entrypoint = "./path/to/file.nix"` to import a specific file instead of the default:
+
+```nix
+{
+  dependencies = {
+    some-lib.url = "github:someone/some-lib";
+    some-lib.entrypoint = "./lib/special.nix";
+  };
+}
+```
 
 ## nix-commands
 
