@@ -107,6 +107,15 @@ let
         # Collect diagnosis to help the user with group selection
         throw (
           let
+            projectName = manifest.name or null;
+            projectDesc = manifest.description or null;
+            projectLabel =
+              if projectName != null && projectDesc != null && projectDesc != "" then
+                " in '${projectName}' (${projectDesc})"
+              else if projectName != null then
+                " in '${projectName}'"
+              else
+                "";
             # Groups that include the missing dependency
             recommendedGroups = builtins.filter (group: availableGroups.${group} ? ${ident}) (
               builtins.attrNames availableGroups
@@ -117,7 +126,7 @@ let
           in
           if enabledGroups == [ ] then
             ''
-              Cannot require dependency '${ident}' with no groups enabled.
+              Cannot require dependency '${ident}'${projectLabel} with no groups enabled.
 
               You called: (import ./nix/importer.nix) []
 
@@ -128,7 +137,7 @@ let
             ''
           else if hasGroups then
             ''
-              Dependency '${ident}' is not included into the current evaluation.
+              Dependency '${ident}' is not included${projectLabel}.
 
               Currently enabled groups: ${enabledGroups}
 
@@ -142,7 +151,7 @@ let
             ''
           else
             ''
-              Dependency '${ident}' was requested for evaluation but does not exist in any group.
+              Dependency '${ident}'${projectLabel} does not exist in any group.
 
               Currently enabled groups: ${enabledGroups}
               Available groups: ${builtins.toString (builtins.attrNames availableGroups)}

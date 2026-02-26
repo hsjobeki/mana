@@ -1,6 +1,9 @@
 # '<YOUR PROJECT>' - Manifest
 # --------------------
 {
+  name = "<YOUR PROJECT>";
+  # description = "";
+
   entrypoint = ./entrypoint.nix;
 
   dependencies = {

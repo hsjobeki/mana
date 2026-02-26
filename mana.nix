@@ -1,5 +1,8 @@
 # mana manifest
 {
+  name = "mana";
+  description = "Dependency locking and injection for Nix";
+
   entrypoint = ./entrypoint.nix;
   dependencies = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
