@@ -8,8 +8,8 @@ Mana solves dependency locking and injection
 ## Quickstart
 
 ```sh
-nix run github:hsjobeki/mana -- init
-nix run github:hsjobeki/mana -- update
+nix run github:hsjobeki/mana init
+nix run github:hsjobeki/mana update
 ```
 
 Creates a lock.json that pins down all dependencies
