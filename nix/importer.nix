@@ -1,4 +1,11 @@
+{
+  groups ? [ "eval" ],
+  manifest ? import ../mana.nix,
+  lock ? builtins.fromJSON (builtins.readFile ../lock.json),
+}:
 let
+  debug = msg: v: builtins.trace "${msg} ${(builtins.toJSON v)}" v;
+  # Keep up to date with lib.nix
   normalizeManifest =
     {
       defaultFn ? x: x,
@@ -6,177 +13,154 @@ let
     manifest:
     let
       dependencies = manifest.dependencies or { };
-      share = manifest.share or [ ];
-      hasShare = share != [ ];
-      explicitTransitiveOverrides = manifest.transitiveOverrides or defaultFn;
-      shareOverrides =
-        let
-          shared = builtins.listToAttrs (
-            map (name: {
-              inherit name;
-              value = dependencies.${name};
-            }) (builtins.filter (name: dependencies ? ${name}) share)
-          );
-        in
-        deps: deps // shared;
-      combinedTransitiveOverrides =
-        if hasShare then
-          deps: explicitTransitiveOverrides (shareOverrides deps)
-        else
-          explicitTransitiveOverrides;
+      checkName =
+        name:
+        builtins.seq (
+          if builtins.match ".*/.*" name != null then
+            let
+              parts = builtins.filter builtins.isString (builtins.split "/" name);
+              suggested = builtins.concatStringsSep "-" parts;
+            in
+            throw "Invalid dependency name \"${name}\". \"/\" is not allowed. Try \"${suggested}\" instead."
+          else
+            null
+        );
     in
-    manifest
-    // {
+    {
+      name = manifest.name or "<unknown-project>";
+      # Should we add a default?
+      description = manifest.description or "";
       dependencies = builtins.mapAttrs (
-        n: dep:
-        dep
-        // {
-          overrides = dep.overrides or (defaultFn);
+        name: dep:
+        checkName name {
+          url = dep.url;
+          # overrides = dep.overrides or defaultFn;
+          pins = dep.pins or [ ];
         }
       ) dependencies;
+      pins = manifest.pins or [ ];
+      share = manifest.share or [ ];
+      entrypoint = manifest.entrypoint or "entrypoint.nix";
       groups =
         manifest.groups or {
           eval = builtins.mapAttrs (n: v: [ "eval" ]) dependencies;
         };
-      transitiveOverrides = combinedTransitiveOverrides;
     };
+  /**
+    Import a dependency tree from the flat lock format { sources, deps }.
 
-  importTree =
+    For each node, looks up its dependency mapping in `deps`,
+    fetches sources from `sources`, and imports entrypoints.
+  */
+  importNode =
     {
-      lock,
-      groups,
-      manifest,
+      nodeLockKey, # lock key of this node ("" for root)
+      nodeManifest, # this node's manifest (from mana.nix)
+      nodeGroups, # [ "eval" "dev" ] enabled groups for this node
     }:
     let
-      normalizedManifest = normalizeManifest { } manifest;
+      normalizedManifest = normalizeManifest { } nodeManifest;
       availableGroups = normalizedManifest.groups;
-      # { {groupName} }
-      groupsByName = builtins.zipAttrsWith (name: vs: builtins.concatMap (v: v.groups) vs) (
-        map (groupName: availableGroups.${groupName}) groups
+      # { {groupName} :: [ "eval" "dev" ] }
+      printableLockKey = if nodeLockKey == "" then "<root>" else nodeLockKey;
+      groupsByName = debug "${printableLockKey}: ${toString nodeGroups}, requires" (
+        builtins.zipAttrsWith (name: vs: builtins.concatMap (v: v) vs) (
+          map (groupName: availableGroups.${groupName}) nodeGroups
+        )
       );
+
+      dependencies = nodeManifest.dependencies or { };
+
+      # This node's dep mapping from the lock: { depName -> lockKey }
+      depMapping = lock.deps.${nodeLockKey} or { };
     in
     builtins.mapAttrs (
-      ident: lockEnt:
+      ident: lockKey:
       let
         enabled = groupsByName ? ${ident};
+        sourceEntry = lock.sources.${lockKey};
         source = fetchTree (
-          (removeAttrs lockEnt.args [ "ref" ])
-          // (removeAttrs lockEnt.locked [
+          (removeAttrs sourceEntry.args [ "ref" ])
+          // (removeAttrs sourceEntry.locked [
             "lastModified"
             "lastModifiedDate"
             "shortRev"
           ])
         );
-        depManifest = "${source}/mana.nix";
-        manifestExists = builtins.pathExists depManifest;
-        optManifest = if manifestExists then import depManifest else { };
-        scope = (
-          importTree {
-            groups = groupsByName.${ident};
-            manifest = optManifest;
-            lock = lockEnt.dependencies;
-          }
-        );
+
+        # Read the dep's manifest (if it has one)
+        depManifestPath = "${source}/mana.nix";
+        manifestExists = builtins.pathExists depManifestPath;
+        depManifest = if manifestExists then import depManifestPath else { };
+
+        # Recursively import this dep's own dependencies
+        scope = importNode {
+          nodeLockKey = lockKey;
+          nodeManifest = depManifest;
+          nodeGroups = groupsByName.${ident};
+        };
+
+        # Consumer can override the entrypoint
+        consumerSpec = debug "dependencies.${ident}" dependencies.${ident} or { };
+        # hasConsumerEntrypoint = consumerSpec.entrypoint != null;
+        consumerEntrypoint = consumerSpec.entrypoint;
+
+        # Import the entrypoint, passing resolved deps as args
+        importEntrypoint =
+          f: if builtins.isFunction f then f (builtins.intersectAttrs (builtins.functionArgs f) scope) else f;
       in
       if enabled then
-        let
-          # Consumer can override the entrypoint for this dependency
-          consumerSpec = normalizedManifest.dependencies.${ident} or { };
-          hasConsumerEntrypoint = consumerSpec ? entrypoint;
-          consumerEntrypoint = consumerSpec.entrypoint or null;
-        in
-        if hasConsumerEntrypoint && consumerEntrypoint == null then
-          source
-        else if hasConsumerEntrypoint then
-          let
-            f = import "${source}/${consumerEntrypoint}";
-          in
-          if builtins.isFunction f then
-            f (builtins.intersectAttrs (builtins.functionArgs f) scope)
+        # mana.nix found
+        if manifestExists then
+          if dependencies.${ident} ? entrypoint then
+            if dependencies.${ident}.entrypoint == null then
+              source
+            else
+              # import custom the entrypoint, as defined in the parent manifest
+              importEntrypoint (import "${source}/${dependencies.${ident}.entrypoint}")
+          else if consumerEntrypoint == null then
+            source
           else
-            f
-        else if manifestExists then
-          let
-            f = import optManifest.entrypoint;
-          in
-          f (builtins.intersectAttrs (builtins.functionArgs f) scope)
+            # import the upstream entrypoint
+            importEntrypoint (import "${source}/${consumerEntrypoint}")
+        # No mana.nix
+        else if dependencies.${ident} ? entrypoint && dependencies.${ident}.entrypoint == null then
+          source
         else
           import "${source}/default.nix"
       else
-        # Error handling
-        # Collect diagnosis to help the user with group selection
+        # Dep not enabled — throw with helpful message
         throw (
           let
-            projectName = manifest.name or null;
-            projectDesc = manifest.description or null;
-            projectLabel =
-              if projectName != null && projectDesc != null && projectDesc != "" then
-                " in '${projectName}' (${projectDesc})"
-              else if projectName != null then
-                " in '${projectName}'"
-              else
-                "";
-            # Groups that include the missing dependency
-            recommendedGroups = builtins.filter (group: availableGroups.${group} ? ${ident}) (
-              builtins.attrNames availableGroups
-            );
-            hasGroups = availableGroups != [ ];
-            # This should probably fail earlier?
-            enabledGroups = if groups != [ ] then builtins.toString groups else "<None>";
+            projectName = nodeManifest.name or null;
+            projectLabel = if projectName != null then " in '${projectName}'" else "";
+            enabledGroups = if nodeGroups != [ ] then builtins.toString nodeGroups else "<None>";
+            recommendedGroups = builtins.filter (
+              group: availableGroups ? ${group} && availableGroups.${group} ? ${ident}
+            ) (builtins.attrNames availableGroups);
           in
-          if enabledGroups == [ ] then
-            ''
-              Cannot require dependency '${ident}'${projectLabel} with no groups enabled.
+          ''
+            Dependency '${ident}' is not included${projectLabel}.
 
-              You called: (import ./nix/importer.nix) []
+            Currently enabled groups: ${enabledGroups}
 
-              To use dependencies, enable at least one group:
-                (import ./nix/importer.nix) [ "eval" ]
+            To include '${ident}', add one of these groups:
+              ${builtins.concatStringsSep "\n  " recommendedGroups}
 
-              Available groups: ${builtins.toString (builtins.attrNames (availableGroups))}
-            ''
-          else if hasGroups then
-            ''
-              Dependency '${ident}' is not included${projectLabel}.
-
-              Currently enabled groups: ${enabledGroups}
-
-              To include '${ident}', add one of these groups:
-                ${builtins.concatStringsSep "\n  " recommendedGroups}
-
-              Example usage:
-                (import ./nix/importer.nix) {
-                   groups = [ "${builtins.head recommendedGroups}" ... ];
-                }
-            ''
-          else
-            ''
-              Dependency '${ident}'${projectLabel} does not exist in any group.
-
-              Currently enabled groups: ${enabledGroups}
-              Available groups: ${builtins.toString (builtins.attrNames availableGroups)}
-
-              To fix add '${ident}' to at least one group.
-
-              NOTE: that 'eval' and 'dev' are the default groups to choose from.
-            ''
+            Example usage:
+              (import ./nix/importer.nix) {
+                 groups = [ "${if recommendedGroups != [ ] then builtins.head recommendedGroups else "eval"}" ];
+              }
+          ''
         )
-    ) lock;
+    ) depMapping;
 
-  root =
-    {
-      groups ? [ "eval" ],
-    }:
-    let
-      manifest = import ../mana.nix;
-      scope = (
-        importTree {
-          inherit groups manifest;
-          lock = builtins.fromJSON (builtins.readFile ../lock.json);
-        }
-      );
-      f = import manifest.entrypoint;
-    in
-    f (builtins.intersectAttrs (builtins.functionArgs f) scope);
+  scope = importNode {
+    nodeLockKey = ""; # Start from "root"
+    nodeManifest = normalizeManifest { } manifest;
+    nodeGroups = groups;
+  };
+
+  f = import manifest.entrypoint;
 in
-root
+f (builtins.intersectAttrs (builtins.functionArgs f) scope)
