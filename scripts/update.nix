@@ -4,8 +4,8 @@
 }:
 let
   inherit (import ../nix/lib.nix)
-    normalizeManifest
     resolve
+    getDependencyManifest
     ;
 
   rootManifest = import (cwd + "/mana.nix");
@@ -16,18 +16,8 @@ let
     inherit (builtins) fetchTree;
   } rootManifest;
 
-  getDependencyManifest =
-    source:
-    let
-      # This is not IFD, because source is from fetchTree
-      # It should have the same performance impact however
-      nestedManifestFile = "${source}/mana.nix";
-      optManifestFile = if builtins.pathExists nestedManifestFile then import nestedManifestFile else { };
-
-      nestedManifest = normalizeManifest { } optManifestFile;
-    in
-    nestedManifest;
-
+  # Pretty print json
+  # cannot use 'jq' because this project doesn't use nixpkgs
   prettyJSON =
     indent: value:
     let
