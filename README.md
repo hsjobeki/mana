@@ -1,9 +1,9 @@
 # Mana 💎
 
-Mana solves dependency locking and injection
+Mana locks and injects Nix dependencies without flakes.
 
-- Its only few lines of bash ⚡️ nix
-- Its better than flakes
+- A few lines of Nix ⚡️ bash
+- No flake dependency
 
 ## Quickstart
 
@@ -12,37 +12,42 @@ nix run github:hsjobeki/mana init
 nix run github:hsjobeki/mana update
 ```
 
-Creates a lock.json that pins down all dependencies
+This creates a `lock.json` that pins all dependencies. Build with:
 
-Now you can build:
+```sh
+nix build -f default.nix hello
+```
 
-`nix build -f default.nix hello`
+`mana init` generates four files:
 
-Done ⚡️
-
-You should take a look at all files that exists. Before reading further
-
-- `mana.nix`
-- `entrypoint.nix`
-- ...
-
-> [!TIP]
-> For ergonomics install it on your system
->
-> e.g. `environment.systemPackages [ mana ]`
+- `mana.nix` — the manifest (dependencies, shares, pins, groups)
+- `entrypoint.nix` — receives injected dependencies
+- `default.nix` — evaluation entry point
+- `nix/importer.nix` — runtime shim that wires everything together
 
 ## Limitations
 
-- Since this tool uses `fetchTree` - the fetcher inside flakes - it is limited to fetching sources that are supported by flakes.
-- Currently verbose lockfile
-- Requires the `importer.nix` shim. - When using flakes that is hidden inside nix.
-- nix commands require `-f` flag / or a flake.nix compat shim (see [nix commands](#nix-commands) )
+- `fetchTree` (the fetcher inside flakes) limits sources to those flakes supports.
+- Verbose lockfile format.
+- Requires the `importer.nix` shim. Flakes hides this internally.
+- Nix commands require the `-f` flag or a `flake.nix` compat shim (see [Nix commands](#nix-commands)).
 
-## Dev Dependencies
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `mana init [--force]` | Initialize a new project (creates `mana.nix`, `entrypoint.nix`, `default.nix`, `nix/importer.nix`) |
+| `mana update [dep1 dep2 ...]` | Update locked dependencies (all or specific ones) |
+| `mana sync` | Sync `nix/importer.nix` with the current mana version (useful after upgrading) |
+
+## Dev dependencies
 
 ```nix
 # mana.nix
 {
+  name = "my-project";
+  description = "My project using mana";
+
   entrypoint = ./entrypoint.nix;
 
   dependencies = {
@@ -55,7 +60,7 @@ You should take a look at all files that exists. Before reading further
       nixpkgs = [ ];
     };
     dev = {
-      treefmt-nix = [ "eval" "dev" ];
+      treefmt-nix = [ ];
     };
   };
 }
@@ -72,7 +77,7 @@ Here `nixpkgs` is in `eval` (always fetched), while `treefmt-nix` is in `dev` (o
 (import ./nix/importer.nix) { groups = [ "eval" "dev" ]; }
 ```
 
-There is one `entrypoint.nix` for all groups. Disabled dependencies throw on access:
+One `entrypoint.nix` serves all groups. Disabled dependencies throw on access:
 
 ```nix
 # entrypoint.nix
@@ -87,8 +92,8 @@ in
 }
 ```
 
-Using `default.nix`: `treefmt-nix` throws when accessed.
-Using `ci.nix`: `treefmt-nix` is available.
+With `default.nix`: accessing `treefmt-nix` throws an error.
+With `ci.nix`: `treefmt-nix` is available.
 
 ```mermaid
   graph TD
@@ -101,7 +106,7 @@ Using `ci.nix`: `treefmt-nix` is available.
       entrypoint.nix --> Documentation
 ```
 
-## Sharing Dependencies
+## Share dependencies
 
 By default, mana respects upstream manifests but re-locks all dependencies locally.
 
@@ -109,11 +114,13 @@ You often want to reduce nixpkgs downloads by forcing dependencies to use your p
 
 ### `share`
 
-Use `share` to list dependencies that should be shared with all transitive dependencies:
+`share` lists dependencies shared with all transitive dependencies:
 
 ```nix
 # mana.nix
 {
+  name = "my-project";
+
   entrypoint = ./entrypoint.nix;
 
   dependencies = {
@@ -126,120 +133,46 @@ Use `share` to list dependencies that should be shared with all transitive depen
 }
 ```
 
-This overrides nixpkgs in:
+This overrides `nixpkgs` in:
 
 - treefmt-nix's dependencies
 - Any transitive dependencies (dependencies of dependencies)
-- **Does not** override your root-level nixpkgs
 
-NOTE: `share` is syntactic sugar for [transitiveOverrides](#transitiveoverrides)
+It does **not** override your root-level nixpkgs.
 
-### Local Overrides
+### `pins`
 
-For granular control over specific dependencies, use local `overrides`:
-
-```nix
-# mana.nix
-rec {
-  entrypoint = ./entrypoint.nix;
-
-  dependencies = {
-    nixpkgs.url = "github:nixos/nixpkgs";
-    treefmt-nix.url = "github:numtide/treefmt-nix";
-    treefmt-nix.overrides = deps: deps // {
-      nixpkgs = dependencies.nixpkgs;
-    };
-  };
-}
-```
-
-### `transitiveOverrides`
-
-For advanced cases, `transitiveOverrides` gives you a function over the full dependency set:
+`pins` protects specific dependencies from being overridden by parent `share` declarations:
 
 ```nix
-# mana.nix
-rec {
-  entrypoint = ./entrypoint.nix;
-
-  dependencies = {
-    nixpkgs.url = "github:nixos/nixpkgs";
-    treefmt-nix.url = "github:numtide/treefmt-nix";
-  };
-
-  transitiveOverrides = deps: deps // {
-    nixpkgs = dependencies.nixpkgs;
-  };
-}
-```
-
-`share = [ "nixpkgs" ]` is equivalent shorthand for the above.
-
-If both `share` and `transitiveOverrides` are set, `share` is applied first, then `transitiveOverrides` on top.
-
-### Override Precedence
-
-Mana uses a two-level precedence system:
-
-- At the root level (lenient mode):
-
-  Local `overrides` win over `transitiveOverrides`/`share` (`overrides > transitiveOverrides`)
-  Lets you customize immediate dependencies while setting defaults for the tree
-
-- For all nested dependencies (strict mode):
-
-  `transitiveOverrides`/`share` win over local `overrides`  (`transitiveOverrides > overrides`)
-  Ensures your pins are enforced throughout the dependency tree
-
-**Example**:
-
-```nix
-# Root mana.nix
-rec {
-  dependencies = {
-    nixpkgs.url = "example:v25.05";
-    utils.url = "example:v1.0";
-
-    dep-a.url = "example:dep-a";
-    dep-a.overrides = deps: deps // {
-      nixpkgs.url = "example:v-unstable";  # ✓ Takes effect (root level is lenient)
-    };
-  };
-
-  share = [ "nixpkgs" "utils" ];
-}
-```
-
-```nix
-# dep-a's mana.nix
+# mana.nix for a library that needs its own specific nixpkgs
 {
-  dependencies = {
-    nixpkgs.url = "example:v-old";
-    utils.url = "example:v-old";
+  name = "my-library";
 
-    dep-b.url = "example:dep-b";
-    dep-b.overrides = deps: deps // {
-      nixpkgs.url = "example:v-unstable";  # ✗ Ignored (strict mode)
-      utils.url = "example:v2.0";          # ✗ Ignored (strict mode)
-    };
+  entrypoint = ./entrypoint.nix;
+
+  dependencies = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
   };
+
+  # Even if a consumer shares nixpkgs, this library keeps its own version
+  pins = [ "nixpkgs" ];
 }
 ```
 
-Results:
+When a dependency declares `pins`, those pinned dependencies are immune to `share` overrides from parent projects. This is useful for libraries that depend on a specific version for correctness.
 
-- Root's `nixpkgs` → `example:v25.05` (root's own dependency)
-- Root's `dep-a` gets `nixpkgs` → `example:v-unstable` (local override at root, lenient)
-- `dep-a.dep-b` gets `nixpkgs` → `example:v25.05` (root's share enforced, strict)
-- `dep-a.dep-b` gets `utils` → `example:v1.0` (root's share enforced, strict)
+## Custom Overrides
 
-## Custom Entrypoints & Raw sources
+comming soon!
 
-By default, mana imports each dependency's `entrypoint` (from its `mana.nix`) or falls back to `default.nix`. You can override this per-dependency:
+## Custom entrypoints and raw sources
+
+By default, mana imports each dependency's `entrypoint` (from its `mana.nix`) or falls back to `default.nix`. You can override this per-dependency.
 
 ### Raw source (no import)
 
-`entrypoint = null` disables the import
+Set `entrypoint = null` to disable the import:
 
 ```nix
 {
@@ -261,7 +194,7 @@ pkgs.hello
 
 ### Custom file
 
-Use `entrypoint = "./path/to/file.nix"` to import a specific file instead of the default:
+Set `entrypoint` to a path to import a specific file instead of the default:
 
 ```nix
 {
@@ -272,13 +205,11 @@ Use `entrypoint = "./path/to/file.nix"` to import a specific file instead of the
 }
 ```
 
-## nix-commands
+## Nix commands
 
-Often we want our tools to be runnable / buildable by people just entering `nix build` or `nix run`.
-These experimental commands are only natively compatible with flakes. - They require a `flake.nix` -
-When using other files they require passing `-f <filename> attrName`
+Experimental nix commands (`nix build`, `nix run`) only work natively with flakes. They require a `flake.nix`. With other files, you must pass `-f <filename> attrName`.
 
-One possible way to get a more native experience is to create a `flake.nix` shim that re-exposes your runnable packages.
+To get native `nix run` support, create a `flake.nix` shim that re-exposes your packages:
 
 ```nix
 # flake.nix
@@ -315,4 +246,10 @@ One possible way to get a more native experience is to create a `flake.nix` shim
 }
 ```
 
+## Flakes dependencies
+
+Comming soon!
+
 ---
+
+Cheers
