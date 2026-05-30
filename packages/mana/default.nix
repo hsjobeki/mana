@@ -12,7 +12,7 @@ mana 💎 - Dependency locking and injection for Nix
 Commands:
   init      Initialize a new mana project in the current directory
   update    Update locked dependencies
-  sync      Sync the local shim file(s) with the current mana version
+  upgrade   Upgrade the local importer shim to the current mana version
 
 Run 'mana <command> --help' for details.
 EOF
@@ -129,20 +129,18 @@ EOF
         fi
     }
 
-    function sync() {
+    function upgrade() {
         if [[ "''${1:-}" == "--help" || "''${1:-}" == "-h" ]]; then
             cat <<'EOF'
-Sync the importer shim (nix/importer.nix) with the current mana version.
+Upgrade the importer shim (nix/importer.nix) to the current mana version.
 
-For upgrading your project get the latest version installed, then run this command.
-
-Usage: mana sync
+Usage: mana upgrade
 EOF
             return 0
         fi
 
         cp ${../../nix/importer.nix} ./nix/importer.nix
-        echo "Importer shim updated 💎"
+        echo "Importer shim updated"
     }
 
     case "''${1:-}" in
@@ -154,9 +152,9 @@ EOF
             shift
             update "$@"
             ;;
-        sync)
+        upgrade)
             shift
-            sync "$@"
+            upgrade "$@"
             ;;
         check)
             shift

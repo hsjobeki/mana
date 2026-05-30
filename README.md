@@ -38,7 +38,8 @@ nix build -f default.nix hello
 |---------|-------------|
 | `mana init [--force]` | Initialize a new project (creates `mana.nix`, `entrypoint.nix`, `default.nix`, `nix/importer.nix`) |
 | `mana update [dep1 dep2 ...]` | Update locked dependencies (all or specific ones) |
-| `mana sync` | Sync `nix/importer.nix` with the current mana version (useful after upgrading) |
+| `mana upgrade` | Upgrade `nix/importer.nix` to the current mana version |
+| `mana check` | Validate `mana.nix` manifest |
 
 ## Dev dependencies
 
@@ -112,9 +113,9 @@ By default, mana respects upstream manifests but re-locks all dependencies local
 
 You often want to reduce nixpkgs downloads by forcing dependencies to use your pinned version.
 
-### `share`
+### `shares`
 
-`share` lists dependencies shared with all transitive dependencies:
+`shares` lists dependencies shared with all transitive dependencies:
 
 ```nix
 # mana.nix
@@ -129,7 +130,7 @@ You often want to reduce nixpkgs downloads by forcing dependencies to use your p
   };
 
   # treefmt-nix (and any deeper deps) will use YOUR nixpkgs
-  share = [ "nixpkgs" ];
+  shares = [ "nixpkgs" ];
 }
 ```
 
@@ -164,7 +165,7 @@ When a dependency declares `pins`, those pinned dependencies are immune to `shar
 
 ## Custom Overrides
 
-comming soon!
+Coming soon!
 
 ## Custom entrypoints and raw sources
 
@@ -248,7 +249,7 @@ To get native `nix run` support, create a `flake.nix` shim that re-exposes your 
 
 ## Flakes dependencies
 
-Comming soon!
+Coming soon!
 
 ---
 
