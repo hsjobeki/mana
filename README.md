@@ -206,6 +206,33 @@ Set `entrypoint` to a path to import a specific file instead of the default:
 }
 ```
 
+## Debugging
+
+Set `debug = true` in your root `mana.nix` to enable import tracing:
+
+```nix
+# mana.nix
+{
+  name = "my-project";
+  entrypoint = ./entrypoint.nix;
+  debug = true;
+  # ...
+}
+```
+
+This prints the dependency tree as it resolves:
+
+```
+trace: [mana] <root>
+  groups: eval, dev
+  deps: nixpkgs, treefmt-nix
+trace: [mana] /treefmt-nix
+  groups: eval
+  deps: nixpkgs
+```
+
+Only the root manifest's `debug` flag is respected; `debug` in dependency manifests is ignored.
+
 ## Nix commands
 
 Experimental nix commands (`nix build`, `nix run`) only work natively with flakes. They require a `flake.nix`. With other files, you must pass `-f <filename> attrName`.

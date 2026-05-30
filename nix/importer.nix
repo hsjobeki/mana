@@ -4,7 +4,8 @@
   lock ? builtins.fromJSON (builtins.readFile ../lock.json),
 }:
 let
-  debug = msg: v: builtins.trace "${msg} ${(builtins.toJSON v)}" v;
+  debug = manifest.debug or false;
+  trace = msg: v: if debug then builtins.trace msg v else v;
   # Keep up to date with lib.nix
   normalizeManifest =
     {
@@ -32,7 +33,8 @@ let
       description = manifest.description or "";
       dependencies = builtins.mapAttrs (
         name: dep:
-        dep // checkName name {
+        dep
+        // checkName name {
           url = dep.url;
           overrides = dep.overrides or defaultFn;
           pins = dep.pins or [ ];
@@ -63,10 +65,12 @@ let
       availableGroups = normalizedManifest.groups;
       # { {groupName} :: [ "eval" "dev" ] }
       printableLockKey = if nodeLockKey == "" then "<root>" else nodeLockKey;
-      groupsByName = debug "${printableLockKey}: ${toString nodeGroups}, requires" (
-        builtins.zipAttrsWith (name: vs: builtins.concatMap (v: v) vs) (
-          map (groupName: availableGroups.${groupName}) nodeGroups
-        )
+      groupsByName = trace ''
+        [mana] ${printableLockKey}
+          groups: ${builtins.concatStringsSep ", " nodeGroups}
+          deps: ${builtins.concatStringsSep ", " (builtins.attrNames groupsResult)}'' groupsResult;
+      groupsResult = builtins.zipAttrsWith (name: vs: builtins.concatMap (v: v) vs) (
+        map (groupName: availableGroups.${groupName}) nodeGroups
       );
 
       dependencies = nodeManifest.dependencies or { };
@@ -101,7 +105,7 @@ let
         };
 
         # Consumer can override the entrypoint
-        consumerSpec = debug "dependencies.${ident}" dependencies.${ident} or { };
+        consumerSpec = dependencies.${ident} or { };
         # hasConsumerEntrypoint = consumerSpec.entrypoint != null;
         consumerEntrypoint = consumerSpec.entrypoint;
 

@@ -34,6 +34,7 @@ let
     "groups"
     "shares"
     "pins"
+    "debug"
   ];
   rootExtra = extra rootManifest rootAllowed;
 
