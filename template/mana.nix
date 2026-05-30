@@ -12,5 +12,5 @@
 
   # Share these dependencies with all transitive dependencies.
   # Libraries that also depend on nixpkgs will use YOUR version.
-  share = [ "nixpkgs" ];
+  shares = [ "nixpkgs" ];
 }

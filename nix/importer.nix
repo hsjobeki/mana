@@ -32,14 +32,14 @@ let
       description = manifest.description or "";
       dependencies = builtins.mapAttrs (
         name: dep:
-        checkName name {
+        dep // checkName name {
           url = dep.url;
           # overrides = dep.overrides or defaultFn;
           pins = dep.pins or [ ];
         }
       ) dependencies;
       pins = manifest.pins or [ ];
-      share = manifest.share or [ ];
+      shares = manifest.shares or [ ];
       entrypoint = manifest.entrypoint or "entrypoint.nix";
       groups =
         manifest.groups or {
