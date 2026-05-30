@@ -13,12 +13,16 @@ Mana is a dependency manager:
 
 | | npins / lon | flakes | mana |
 |---|---|---|---|
+ | Fetcher | fetchTarball / fetchGit | fetchTree (experimental) | fetchTree (experimental) |
 | Transitive dependencies | ❌ Manual | ✅ | ✅ |
 | Dependency injection | ❌ Manual wiring | ✅ `inputs` | ✅ entrypoints |
 | Version sharing across tree | ❌ | ⚠️ `follows` | ✅ `shares` |
 | Protect deps from overrides | ❌ | ❌ | ✅ `pins` |
 | Dev dependencies | ❌ | ❌ | ✅ `groups` |
 | Deduplication | ❌ | ✅ | ✅ |
+| `add` command | ✅ | ⚠️ [flake-edit](https://github.com/a-kenji/flake-edit) | ❌ Manual |
+| Workspaces / monorepo | ❌ | ❌ | ⚠️ Planned |
+| Offline vendoring | ❌ | ❌ | ⚠️ Planned |
 | Implementation | Compiled Rust binary | Built into Nix | Pure Nix + shell script |
 
 Mana has zero dependencies. It only needs `nix-instantiate` and `nix eval` -- tools already present on any system with Nix installed.
