@@ -110,6 +110,8 @@ EOF
             echo "Updating dependencies: $*"
         fi
 
+        # Validate manifest before resolving
+        check
         # Call 'nix eval update.nix --json'
         nix --extra-experimental-features nix-command eval --refresh --raw \
             --arg cwd "$(pwd)" \
