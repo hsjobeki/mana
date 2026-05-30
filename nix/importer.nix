@@ -34,7 +34,7 @@ let
         name: dep:
         dep // checkName name {
           url = dep.url;
-          # overrides = dep.overrides or defaultFn;
+          overrides = dep.overrides or defaultFn;
           pins = dep.pins or [ ];
         }
       ) dependencies;

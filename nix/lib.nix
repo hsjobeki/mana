@@ -108,9 +108,10 @@ let
       name = manifest.name or "<unknown-project>";
       # Should we add a default?
       description = manifest.description or "";
-      dependencies = mapAttrs (
+      dependencies = builtins.mapAttrs (
         name: dep:
-        checkName name {
+        dep
+        // checkName name {
           url = dep.url;
           overrides = dep.overrides or defaultFn;
           pins = dep.pins or [ ];

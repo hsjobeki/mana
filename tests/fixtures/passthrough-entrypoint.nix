@@ -1,0 +1,2 @@
+{ dep, ... }:
+{ inherit dep; }
