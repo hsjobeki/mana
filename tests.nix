@@ -1,1 +1,4 @@
-{ system ? builtins.currentSystem }: (import ./nix/importer.nix { } { inherit system; }).tests
+{
+  lib = (import ./nix/libTests.nix);
+  importer = (import ./nix/importer-tests.nix);
+}

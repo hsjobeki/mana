@@ -18,6 +18,15 @@ Run 'mana <command> --help' for details.
 EOF
     }
 
+    function check() {
+        set -efu -o pipefail
+
+        nix-instantiate \
+            ${../..}/scripts/check.nix \
+            --arg cwd "$(pwd)" \
+            --strict --eval --json
+    }
+
     function init() {
         set -efu -o pipefail
 
@@ -146,6 +155,10 @@ EOF
         sync)
             shift
             sync "$@"
+            ;;
+        check)
+            shift
+            check "$@"
             ;;
         help|--help|-h)
             show_help

@@ -13,6 +13,23 @@ let
     if sources ? ${key} then sources.${key} else throw "Mock fetchTree: unknown source '${key}'";
 in
 {
+  test_checks_valid =
+    let
+      checkFn = import ../scripts/check.nix;
+    in
+    {
+      expr = checkFn { rootManifest = { entrypoint = ./lib.nix; }; };
+      expected = true;
+    };
+
+  test_checks_invalid =
+    let
+      checkFn = import ../scripts/check.nix;
+    in
+    {
+      expr = (builtins.tryEval (checkFn { rootManifest = { }; })).success;
+      expected = false;
+    };
   inherit lib;
   test_dedup_flat =
     let
