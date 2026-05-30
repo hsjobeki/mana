@@ -226,9 +226,12 @@ This prints the dependency tree as it resolves:
 trace: [mana] <root>
   groups: eval, dev
   deps: nixpkgs, treefmt-nix
+trace: [mana] <root>/nixpkgs [raw]
+trace: [mana] <root>/treefmt-nix [entrypoint: entrypoint.nix]
 trace: [mana] /treefmt-nix
   groups: eval
   deps: nixpkgs
+trace: [mana] /treefmt-nix/nixpkgs [raw]
 ```
 
 Only the root manifest's `debug` flag is respected; `debug` in dependency manifests is ignored.

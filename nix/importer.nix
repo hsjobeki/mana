@@ -112,28 +112,40 @@ let
         # Import the entrypoint, passing resolved deps as args
         importEntrypoint =
           f: if builtins.isFunction f then f (builtins.intersectAttrs (builtins.functionArgs f) scope) else f;
+        # Classify how we resolve this dependency's entrypoint
+        resolution =
+          if manifestExists then
+            if dependencies.${ident} ? entrypoint then
+              if dependencies.${ident}.entrypoint == null then
+                "raw"
+              else
+                "custom: ${dependencies.${ident}.entrypoint}"
+            else if consumerEntrypoint == null then
+              "raw"
+            else
+              "entrypoint: ${consumerEntrypoint}"
+          else if dependencies.${ident} ? entrypoint && dependencies.${ident}.entrypoint == null then
+            "raw"
+          else
+            "default.nix";
+
+        resolutionKind = builtins.head (builtins.split ":" resolution);
+
+        resolved = trace "[mana] ${printableLockKey}/${ident} [${resolution}]" (
+          if resolutionKind == "raw" then
+            source
+          else if resolutionKind == "custom" then
+            importEntrypoint (import "${source}/${dependencies.${ident}.entrypoint}")
+          else if resolutionKind == "entrypoint" then
+            importEntrypoint (import "${source}/${consumerEntrypoint}")
+          else
+            import "${source}/default.nix"
+        );
       in
       if enabled then
-        # mana.nix found
-        if manifestExists then
-          if dependencies.${ident} ? entrypoint then
-            if dependencies.${ident}.entrypoint == null then
-              source
-            else
-              # import custom the entrypoint, as defined in the parent manifest
-              importEntrypoint (import "${source}/${dependencies.${ident}.entrypoint}")
-          else if consumerEntrypoint == null then
-            source
-          else
-            # import the upstream entrypoint
-            importEntrypoint (import "${source}/${consumerEntrypoint}")
-        # No mana.nix
-        else if dependencies.${ident} ? entrypoint && dependencies.${ident}.entrypoint == null then
-          source
-        else
-          import "${source}/default.nix"
+        resolved
       else
-        # Dep not enabled — throw with helpful message
+        # Dep not enabled: throw with helpful message
         throw (
           let
             projectName = nodeManifest.name or null;
