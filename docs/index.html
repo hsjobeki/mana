@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Stop wiring Nix dependencies by hand. Mana resolves the whole transitive dependency tree, deduplicates it, and injects each dependency into your project — without flakes. Pure Nix and bash.">
+<title>Mana 💎 — dependency manager for Nix</title>
+<style>
+  /* ---- tokens ---------------------------------------------------------- */
+  :root {
+    --bg:      #0f0e13;
+    --bg-2:    #16141d;
+    --bg-3:    #1e1b28;
+    --border:  #2a2734;
+    --border-2:#3a3548;
+    --fg:      #e9e7f0;
+    --fg-dim:  #a39eb3;
+    --fg-mute: #726c84;
+    --accent:  #b69cff;
+    --accent-d:#8b6fe0;
+    --accent-bg: rgba(150,122,255,.13);
+    --ok:      #84dca6;
+    --ok-bg:   rgba(132,220,166,.12);
+    --bad:     #f0918d;
+    --bad-bg:  rgba(240,145,141,.12);
+    --pin:     #f3c87a;
+    --pin-bg:  rgba(243,200,122,.12);
+    --code:    #d8d4e8;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --radius: 10px;
+  }
+
+  /* ---- reset ----------------------------------------------------------- */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, p, ul, ol, figure, pre { margin: 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, .mono { font-family: var(--mono); }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  /* visually hidden but keyboard-focusable form controls */
+  .ctl {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0; border: 0;
+    clip: rect(0 0 0 0); clip-path: inset(50%);
+    overflow: hidden; white-space: nowrap;
+  }
+
+  .wrap { max-width: 1060px; margin-inline: auto; padding-inline: 24px; }
+
+  /* ---- hover tooltips (pure CSS) -------------------------------------- */
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after,
+  [data-tip]:focus-visible::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%; bottom: calc(100% + 9px);
+    transform: translateX(-50%);
+    max-width: 240px; width: max-content;
+    background: var(--bg-3);
+    color: var(--fg);
+    border: 1px solid var(--border-2);
+    padding: 5px 9px; border-radius: 7px;
+    font-family: var(--sans); font-size: 12.5px; line-height: 1.45;
+    text-align: center; font-weight: 400;
+    box-shadow: 0 6px 22px rgba(0,0,0,.45);
+    z-index: 20; pointer-events: none;
+  }
+  [data-tip]:hover::before,
+  [data-tip]:focus-visible::before {
+    content: "";
+    position: absolute;
+    left: 50%; bottom: calc(100% + 4px);
+    transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: var(--border-2);
+    z-index: 20; pointer-events: none;
+  }
+
+  /* ---- hero ------------------------------------------------------------ */
+  .hero { padding: 84px 0 40px; border-bottom: 1px solid var(--border); }
+  .brand {
+    font-size: clamp(40px, 7vw, 60px);
+    font-weight: 700; letter-spacing: -.02em; line-height: 1;
+    display: flex; align-items: center; gap: .3em;
+  }
+  .gem { filter: drop-shadow(0 0 18px rgba(150,122,255,.55)); }
+  .tagline {
+    margin-top: 20px; max-width: 60ch;
+    font-size: clamp(17px, 2.2vw, 20px);
+    color: var(--fg-dim); line-height: 1.55;
+  }
+  .tagline b { color: var(--fg); font-weight: 600; }
+
+  .hero-show {
+    margin-top: 36px;
+    display: flex; flex-wrap: wrap; align-items: stretch; gap: 22px;
+  }
+  .hero-show .code-card { flex: 1 1 380px; margin: 0; }
+  .hero-then {
+    flex: 1 1 240px;
+    display: flex; flex-direction: column; justify-content: center; gap: 10px;
+  }
+  .hero-then .flow-arrow {
+    font-size: 26px; color: var(--accent); line-height: 1;
+  }
+  .hero-then p { color: var(--fg-dim); }
+  .hero-then code { color: var(--accent); }
+
+  /* ---- generic sections ----------------------------------------------- */
+  .block { padding: 64px 0; border-bottom: 1px solid var(--border); }
+  .block > h2 {
+    font-size: clamp(22px, 3vw, 28px); font-weight: 650; letter-spacing: -.01em;
+  }
+  .block > h2 .sub { color: var(--fg-mute); font-weight: 400; font-size: .62em; }
+  .lede { margin-top: 10px; color: var(--fg-dim); max-width: 62ch; }
+
+  /* ---- code cards ------------------------------------------------------ */
+  .code-card {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .code-card figcaption {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px;
+    background: var(--bg-3);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 12.5px; color: var(--fg-mute);
+  }
+  .code-card figcaption::before {
+    content: ""; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--border-2); flex: none;
+  }
+  .code-card.term figcaption::before { background: var(--ok); }
+  .code-card pre {
+    margin: 0; padding: 16px;
+    overflow-x: auto;
+    font-size: 13px; line-height: 1.65; color: var(--code);
+    tab-size: 2;
+  }
+  .code-card.term pre { color: #cfe9d6; }
+  .code-card pre .c { color: var(--fg-mute); }      /* comment   */
+  .code-card pre .k { color: var(--accent); }       /* keyword   */
+  .code-card pre .s { color: #b7d8a0; }             /* string    */
+  .code-card pre .p { color: var(--pin); }          /* prompt    */
+
+  .role {
+    margin: 0 0 14px; font-size: 14px; color: var(--fg);
+    font-weight: 500;
+  }
+  .role::before { content: "▸ "; color: var(--accent); }
+  .note {
+    margin-top: 14px; font-size: 13.5px; color: var(--fg-dim); line-height: 1.6;
+    max-width: 70ch;
+  }
+  .note code { color: var(--accent); background: var(--accent-bg); padding: 1px 5px; border-radius: 5px; font-size: .92em; }
+
+  /* ---- lifecycle explorer --------------------------------------------- */
+  .lifecycle { position: relative; margin-top: 28px; }
+  .rail {
+    list-style: none; padding: 0; margin: 0 0 26px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  }
+  .rail .tab {
+    display: inline-block;
+    padding: 8px 13px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--fg-dim);
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+    user-select: none;
+  }
+  .rail .tab:hover { color: var(--fg); border-color: var(--border-2); }
+  .rail .sep { color: var(--fg-mute); font-size: 13px; flex: none; }
+  .rail .sep::before { content: "→"; }
+
+  .panels { position: relative; }
+  .panel { display: none; animation: fade .22s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .panel .code-card { margin: 0; }
+
+  /* radio-driven selection (no JS) */
+  #st-1:checked ~ .panels .p1,
+  #st-2:checked ~ .panels .p2,
+  #st-3:checked ~ .panels .p3,
+  #st-4:checked ~ .panels .p4,
+  #st-5:checked ~ .panels .p5,
+  #st-6:checked ~ .panels .p6,
+  #st-7:checked ~ .panels .p7 { display: block; }
+
+  #st-1:checked ~ .rail label[for="st-1"],
+  #st-2:checked ~ .rail label[for="st-2"],
+  #st-3:checked ~ .rail label[for="st-3"],
+  #st-4:checked ~ .rail label[for="st-4"],
+  #st-5:checked ~ .rail label[for="st-5"],
+  #st-6:checked ~ .rail label[for="st-6"],
+  #st-7:checked ~ .rail label[for="st-7"] {
+    background: var(--accent-bg); color: var(--accent);
+    border-color: var(--accent-d); font-weight: 600;
+  }
+  #st-1:focus-visible ~ .rail label[for="st-1"],
+  #st-2:focus-visible ~ .rail label[for="st-2"],
+  #st-3:focus-visible ~ .rail label[for="st-3"],
+  #st-4:focus-visible ~ .rail label[for="st-4"],
+  #st-5:focus-visible ~ .rail label[for="st-5"],
+  #st-6:focus-visible ~ .rail label[for="st-6"],
+  #st-7:focus-visible ~ .rail label[for="st-7"] {
+    outline: 2px solid var(--accent); outline-offset: 3px;
+  }
+
+  /* details (resolution kinds) */
+  details {
+    margin-top: 16px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-2);
+  }
+  summary {
+    cursor: pointer; padding: 11px 14px;
+    font-size: 13.5px; color: var(--fg-dim); font-weight: 500;
+    list-style: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "▸ "; color: var(--accent); display: inline-block; transition: transform .15s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  summary:hover { color: var(--fg); }
+  details .det-body { padding: 0 14px 14px; }
+  .legend { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
+  .legend li { font-size: 13px; color: var(--fg-dim); }
+  .legend code { color: var(--accent); font-size: .9em; }
+
+  /* ---- interactive demos: shared toggle UI ---------------------------- */
+  .demo { position: relative; margin-top: 24px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+  .switch {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 9px 14px 9px 12px;
+    background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius);
+    cursor: pointer; user-select: none;
+    font-family: var(--mono); font-size: 13px; color: var(--fg-dim);
+    transition: border-color .15s, color .15s;
+  }
+  .switch:hover { border-color: var(--border-2); color: var(--fg); }
+  .knob {
+    flex: none; width: 34px; height: 20px; border-radius: 999px;
+    background: var(--border-2); position: relative;
+    transition: background .15s;
+  }
+  .knob::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--fg-dim);
+    transition: transform .15s, background .15s;
+  }
+  .switch b { color: var(--fg); font-weight: 600; }
+
+  /* checked state of toggles */
+  #t-share:checked ~ .controls label[for="t-share"] .knob,
+  #t-pin:checked   ~ .controls label[for="t-pin"]   .knob,
+  #g-eval:checked  ~ .controls label[for="g-eval"]  .knob,
+  #g-dev:checked   ~ .controls label[for="g-dev"]   .knob,
+  #g-cuda:checked  ~ .controls label[for="g-cuda"]  .knob {
+    background: var(--accent);
+  }
+  #t-share:checked ~ .controls label[for="t-share"] .knob::after,
+  #t-pin:checked   ~ .controls label[for="t-pin"]   .knob::after,
+  #g-eval:checked  ~ .controls label[for="g-eval"]  .knob::after,
+  #g-dev:checked   ~ .controls label[for="g-dev"]   .knob::after,
+  #g-cuda:checked  ~ .controls label[for="g-cuda"]  .knob::after {
+    transform: translateX(14px); background: #fff;
+  }
+  #t-share:focus-visible ~ .controls label[for="t-share"] .knob,
+  #t-pin:focus-visible   ~ .controls label[for="t-pin"]   .knob,
+  #g-eval:focus-visible  ~ .controls label[for="g-eval"]  .knob,
+  #g-dev:focus-visible   ~ .controls label[for="g-dev"]   .knob,
+  #g-cuda:focus-visible  ~ .controls label[for="g-cuda"]  .knob {
+    outline: 2px solid var(--accent); outline-offset: 3px;
+  }
+
+  /* ---- dependency tree ------------------------------------------------- */
+  .tree { list-style: none; margin: 0; padding: 0; }
+  .tree ul { list-style: none; margin: 0; padding-left: 26px; position: relative; }
+  .tree ul::before {
+    content: ""; position: absolute; left: 9px; top: -6px; bottom: 18px;
+    border-left: 2px solid var(--border-2);
+  }
+  .tn { position: relative; padding: 6px 0; }
+  .tn ul > li::before {
+    content: ""; position: absolute; left: -17px; top: 22px;
+    width: 14px; border-top: 2px solid var(--border-2);
+  }
+  .node {
+    display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 12px;
+    background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  .node .name { font-family: var(--mono); font-weight: 600; color: var(--fg); }
+  .pill {
+    font-family: var(--mono); font-size: 12.5px;
+    padding: 2px 9px; border-radius: 999px;
+    border: 1px solid var(--border-2); color: var(--fg-dim);
+  }
+  .ver { display: none; align-items: center; gap: 6px; }
+  .ver.own { display: inline-flex; }     /* baseline: each declares its own */
+  .ver em {
+    font-style: normal; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 999px;
+  }
+  .ver.shared  { color: var(--accent); border: 0; }
+  .ver.shared  .pill { color: var(--accent); border-color: var(--accent-d); background: var(--accent-bg); }
+  .ver.shared  em { background: var(--accent-bg); color: var(--accent); }
+  .ver.pinned  .pill { color: var(--pin); border-color: var(--pin); background: var(--pin-bg); }
+  .ver.pinned  em { background: var(--pin-bg); color: var(--pin); }
+  .ver.below   .pill { color: var(--fg-dim); }
+  .ver.below   em { background: var(--bg-3); color: var(--fg-mute); }
+
+  .badge {
+    display: none;
+    font-family: var(--mono); font-size: 11px;
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .badge.shares { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-d); }
+  .badge.pinmark { background: var(--pin-bg); color: var(--pin); border: 1px solid var(--pin); }
+
+  /* shares ON: A, B, C snap to root's nixpkgs */
+  #t-share:checked ~ .tree .tn .ver.own   { display: none; }
+  #t-share:checked ~ .tree .tn .ver.shared{ display: inline-flex; }
+  #t-share:checked ~ .tree .node.root .badge.shares { display: inline-block; }
+  /* propagation: edges glow */
+  #t-share:checked ~ .tree ul::before,
+  #t-share:checked ~ .tree .tn ul > li::before { border-color: var(--accent-d); }
+
+  /* shares ON + pin@B ON: B keeps its own (pinned); C below the pin keeps its own */
+  #t-share:checked ~ #t-pin:checked ~ .tree .tn.b .ver.shared { display: none; }
+  #t-share:checked ~ #t-pin:checked ~ .tree .tn.b .ver.pinned { display: inline-flex; }
+  #t-share:checked ~ #t-pin:checked ~ .tree .tn.c .ver.shared { display: none; }
+  #t-share:checked ~ #t-pin:checked ~ .tree .tn.c .ver.below  { display: inline-flex; }
+  /* the share no longer reaches past B: its incoming + outgoing edges detach */
+  #t-share:checked ~ #t-pin:checked ~ .tree .tn.b > ul::before { border-color: var(--border-2); border-left-style: dashed; }
+  #t-share:checked ~ #t-pin:checked ~ .tree .tn.b > ul > li::before { border-color: var(--border-2); border-top-style: dashed; }
+
+  /* pin toggle when shares is OFF: also show pin marker so the control reads honestly */
+  #t-pin:checked ~ .tree .node.b .badge.pinmark { display: inline-block; }
+
+  /* state captions */
+  .caps { margin-top: 22px; }
+  .cap { display: none; font-size: 13.5px; color: var(--fg-dim); line-height: 1.6; max-width: 72ch; }
+  .cap code { color: var(--accent); background: var(--accent-bg); padding: 1px 5px; border-radius: 5px; }
+  #t-share:checked ~ .caps .cap.share { display: block; }
+  #t-share:checked ~ #t-pin:checked ~ .caps .cap.share { display: none; }
+  #t-share:checked ~ #t-pin:checked ~ .caps .cap.pin { display: block; }
+
+  /* ---- groups board ---------------------------------------------------- */
+  .board { display: flex; flex-wrap: wrap; gap: 16px; }
+  .dep {
+    flex: 1 1 240px;
+    background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px;
+  }
+  .dep .dname { font-family: var(--mono); font-weight: 600; color: var(--fg); }
+  .dep .grp {
+    font-family: var(--mono); font-size: 11.5px; color: var(--fg-mute);
+    margin-left: 8px; padding: 1px 7px; border: 1px solid var(--border-2); border-radius: 999px;
+  }
+  .dep .state { display: none; margin-top: 12px; font-size: 13.5px; font-family: var(--mono); }
+  .dep .state.bad { display: flex; align-items: center; gap: 8px; color: var(--bad); }   /* default: not enabled */
+  .dep .state.ok  { align-items: center; gap: 8px; color: var(--ok); }
+  .dep .state::before { font-weight: 700; }
+  .dep .state.ok::before  { content: "✓"; }
+  .dep .state.bad::before { content: "✕"; }
+
+  #g-eval:checked ~ .board .d-nixpkgs .state.bad { display: none; }
+  #g-eval:checked ~ .board .d-nixpkgs .state.ok  { display: flex; }
+  #g-dev:checked  ~ .board .d-treefmt .state.bad { display: none; }
+  #g-dev:checked  ~ .board .d-treefmt .state.ok  { display: flex; }
+  #g-cuda:checked ~ .board .d-cuda    .state.bad { display: none; }
+  #g-cuda:checked ~ .board .d-cuda    .state.ok  { display: flex; }
+
+  .mini {
+    margin-top: 20px; padding: 14px 16px;
+    background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius);
+    font-size: 13px; color: var(--code); overflow-x: auto; line-height: 1.6;
+  }
+  .mini .c { color: var(--fg-mute); }
+  .mini .k { color: var(--accent); }
+
+  /* ---- footer ---------------------------------------------------------- */
+  .footer { padding: 56px 0 72px; }
+  .footer .code-card { max-width: 480px; margin: 0 0 18px; }
+  .footer .links { font-size: 14px; color: var(--fg-mute); }
+  .footer .links a { margin-right: 18px; }
+
+  /* ---- responsive ------------------------------------------------------ */
+  @media (max-width: 620px) {
+    .hero { padding-top: 56px; }
+    .rail { flex-direction: column; align-items: stretch; }
+    .rail .tab { display: block; text-align: center; }
+    .rail .sep { text-align: center; }
+    .rail .sep::before { content: "↓"; }
+    .hero-show .code-card { flex-basis: 100%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================== HERO ============================== -->
+<header class="hero">
+  <div class="wrap">
+    <h1 class="brand">Mana <span class="gem" aria-hidden="true">💎</span></h1>
+    <p class="tagline"><b>Stop wiring Nix dependencies by hand.</b> Declare them once and Mana resolves the whole transitive tree, deduplicates it, and injects each into your project.</p>
+
+    <div class="hero-show">
+      <figure class="code-card">
+        <figcaption>mana.nix</figcaption>
+<pre><span class="p">{</span>
+  name = <span class="s">"&lt;YOUR PROJECT&gt;"</span>;
+  entrypoint = ./entrypoint.nix;
+  dependencies = {
+    nixpkgs.url = <span class="s">"github:nixos/nixpkgs/nixos-unstable"</span>;
+  };
+  shares = [ <span class="s">"nixpkgs"</span> ];      <span class="c"># transitive deps use YOUR nixpkgs</span>
+}</pre>
+      </figure>
+      <div class="hero-then">
+        <span class="flow-arrow" aria-hidden="true">→</span>
+        <p><code>mana update</code> does the rest: resolves the full tree, pins it in <code>lock.json</code>, and injects each dependency into your build.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ========================= LIFECYCLE ========================== -->
+  <section class="block" aria-label="How mana works">
+    <h2>How it works <span class="sub">— click a stage</span></h2>
+
+    <div class="lifecycle">
+      <!-- radios drive the panels below (pure CSS :checked ~ sibling) -->
+      <input class="ctl" type="radio" name="stage" id="st-1" checked>
+      <input class="ctl" type="radio" name="stage" id="st-2">
+      <input class="ctl" type="radio" name="stage" id="st-3">
+      <input class="ctl" type="radio" name="stage" id="st-4">
+      <input class="ctl" type="radio" name="stage" id="st-5">
+      <input class="ctl" type="radio" name="stage" id="st-6">
+      <input class="ctl" type="radio" name="stage" id="st-7">
+
+      <ol class="rail">
+        <li><label class="tab" for="st-1" data-tip="What you author">mana.nix</label></li>
+        <li class="sep" aria-hidden="true"></li>
+        <li><label class="tab" for="st-2" data-tip="Resolve + lock">mana update</label></li>
+        <li class="sep" aria-hidden="true"></li>
+        <li><label class="tab" for="st-3" data-tip="Resolved, pinned graph">lock.json</label></li>
+        <li class="sep" aria-hidden="true"></li>
+        <li><label class="tab" for="st-4" data-tip="Evaluation entry point">default.nix</label></li>
+        <li class="sep" aria-hidden="true"></li>
+        <li><label class="tab" for="st-5" data-tip="Resolve + inject">nix/importer.nix</label></li>
+        <li class="sep" aria-hidden="true"></li>
+        <li><label class="tab" for="st-6" data-tip="Receives injected deps">entrypoint.nix</label></li>
+        <li class="sep" aria-hidden="true"></li>
+        <li><label class="tab" for="st-7" data-tip="Build output">hello</label></li>
+      </ol>
+
+      <div class="panels">
+        <!-- stage 1: mana.nix -->
+        <article class="panel p1">
+          <p class="role">What you author</p>
+          <figure class="code-card">
+            <figcaption>mana.nix</figcaption>
+<pre><span class="c"># '&lt;YOUR PROJECT&gt;' - Manifest</span>
+<span class="c"># --------------------</span>
+{
+  name = <span class="s">"&lt;YOUR PROJECT&gt;"</span>;
+  <span class="c"># description = "";</span>
+
+  entrypoint = ./entrypoint.nix;
+
+  dependencies = {
+    nixpkgs.url = <span class="s">"github:nixos/nixpkgs/nixos-unstable"</span>;
+  };
+
+  <span class="c"># Share these dependencies with all transitive dependencies.</span>
+  <span class="c"># Libraries that also depend on nixpkgs will use YOUR version.</span>
+  shares = [ <span class="s">"nixpkgs"</span> ];
+}</pre>
+          </figure>
+        </article>
+
+        <!-- stage 2: mana update -->
+        <article class="panel p2">
+          <p class="role">Resolve + lock — fetch the transitive graph and pin it.</p>
+          <figure class="code-card term">
+            <figcaption>terminal</figcaption>
+<pre><span class="p">$</span> mana update
+Updating all dependencies
+lock.json updated</pre>
+          </figure>
+          <p class="note">Runs <code>check</code>, evaluates <code>scripts/update.nix</code> → <code>next_lock.json</code>, verifies it parses, then <code>mv</code>s it to <code>lock.json</code>. No args updates everything; <code>mana update nixpkgs</code> updates one dependency.</p>
+        </article>
+
+        <!-- stage 3: lock.json -->
+        <article class="panel p3">
+          <p class="role">The resolved, pinned graph — <code>{ deps, sources }</code>.</p>
+          <figure class="code-card">
+            <figcaption>lock.json</figcaption>
+<pre>{
+  <span class="s">"deps"</span>: {
+    <span class="s">""</span>: {
+      <span class="s">"nixpkgs"</span>: <span class="s">"/nixpkgs"</span>
+    }
+  },
+  <span class="s">"sources"</span>: {
+    <span class="s">"/nixpkgs"</span>: {
+      <span class="s">"args"</span>: {
+        <span class="s">"owner"</span>: <span class="s">"nixos"</span>,
+        <span class="s">"ref"</span>: <span class="s">"nixos-unstable"</span>,
+        <span class="s">"repo"</span>: <span class="s">"nixpkgs"</span>,
+        <span class="s">"type"</span>: <span class="s">"github"</span>
+      },
+      <span class="s">"locked"</span>: {
+        <span class="s">"lastModified"</span>: 1775710090,
+        <span class="s">"lastModifiedDate"</span>: <span class="s">"20260409044810"</span>,
+        <span class="s">"narHash"</span>: <span class="s">"sha256-ar3rofg+awPB8QXDaFJhJ2jJhu+KqN/PRCXeyuXR76E="</span>,
+        <span class="s">"rev"</span>: <span class="s">"4c1018dae018162ec878d42fec712642d214fdfa"</span>,
+        <span class="s">"shortRev"</span>: <span class="s">"4c1018d"</span>
+      }
+    }
+  }
+}</pre>
+          </figure>
+          <p class="note"><code>sources</code> maps <code>lockKey → { args, locked }</code>. <code>deps</code> maps <code>parentKey → { name → lockKey }</code> — the root parent is <code>""</code>. A <code>lockKey</code> is the dependency's tree path (<code>/A</code>, <code>/A/B</code>); <code>/</code> is banned in names so keys never collide. Two deps with the same <code>narHash</code> collapse to one source — that is the deduplication.</p>
+        </article>
+
+        <!-- stage 4: default.nix -->
+        <article class="panel p4">
+          <p class="role">Evaluation entry point — selects enabled groups.</p>
+          <figure class="code-card">
+            <figcaption>default.nix</figcaption>
+<pre>(import ./nix/importer.nix) {
+  <span class="c"># evaluation arguments</span>
+  <span class="c">#</span>
+  <span class="c"># groups = [ "eval" "dev" ]</span>
+  <span class="c"># : Enabled evaluation groups, see README.md</span>
+  <span class="c"># : default = [ "eval" ]</span>
+}</pre>
+          </figure>
+          <p class="note">Build a target with <code>nix build -f default.nix hello</code>. Default enabled groups: <code>[ "eval" ]</code>.</p>
+        </article>
+
+        <!-- stage 5: importer -->
+        <article class="panel p5">
+          <p class="role">Resolve + inject — the shim mana writes and upgrades for you.</p>
+          <figure class="code-card">
+            <figcaption>nix/importer.nix — excerpt</figcaption>
+<pre><span class="c"># Import the entrypoint, passing resolved deps as args</span>
+importEntrypoint =
+  f: <span class="k">if</span> builtins.isFunction f <span class="k">then</span> f (builtins.intersectAttrs (builtins.functionArgs f) scope) <span class="k">else</span> f;
+<span class="c">…</span>
+scope = importNode {
+  nodeLockKey = <span class="s">""</span>; <span class="c"># Start from "root"</span>
+  nodeManifest = normalizeManifest { } manifest;
+  nodeGroups = groups;
+};
+
+f = import manifest.entrypoint;
+<span class="k">in</span>
+f (builtins.intersectAttrs (builtins.functionArgs f) scope)</pre>
+          </figure>
+          <p class="note">Walks <code>deps</code>, <code>fetchTree</code>s each <code>sources</code> entry, imports each entrypoint, and injects only the arguments a function declares — via <code>builtins.intersectAttrs (functionArgs f) scope</code>. A dependency outside every enabled group <em>throws</em> on access, listing the groups that would include it.</p>
+
+          <details>
+            <summary>Resolution kinds — set <code>debug = true</code> to trace</summary>
+            <div class="det-body">
+              <figure class="code-card term">
+                <figcaption>trace</figcaption>
+<pre>trace: [mana] &lt;root&gt;
+  groups: eval, dev
+  deps: nixpkgs, treefmt-nix
+trace: [mana] &lt;root&gt;/nixpkgs [raw]
+trace: [mana] &lt;root&gt;/treefmt-nix [entrypoint: entrypoint.nix]
+trace: [mana] /treefmt-nix
+  groups: eval
+  deps: nixpkgs
+trace: [mana] /treefmt-nix/nixpkgs [raw]</pre>
+              </figure>
+              <ul class="legend">
+                <li><code>[raw]</code> — <code>entrypoint = null</code>; returns the source path, no import</li>
+                <li><code>[custom: path]</code> — consumer overrides the entrypoint</li>
+                <li><code>[entrypoint: path]</code> — dependency's own entrypoint from its <code>mana.nix</code></li>
+                <li><code>[default.nix]</code> — no <code>mana.nix</code>; falls back to <code>default.nix</code></li>
+              </ul>
+            </div>
+          </details>
+        </article>
+
+        <!-- stage 6: entrypoint -->
+        <article class="panel p6">
+          <p class="role">Receives the resolved dependencies as function arguments.</p>
+          <figure class="code-card">
+            <figcaption>entrypoint.nix</figcaption>
+<pre><span class="c"># manifest dependencies, injected by the nix/importer.nix</span>
+<span class="c"># ↓ dependencies controlled by mana</span>
+{ nixpkgs }:
+<span class="c"># ↓ your parameters</span>
+{system ? builtins.currentSystem, ... }:
+<span class="k">let</span>
+  pkgs = nixpkgs { inherit system; };
+<span class="k">in</span>
+{
+  hello = pkgs.hello;
+  <span class="c"># ...more of your own stuff</span>
+}</pre>
+          </figure>
+        </article>
+
+        <!-- stage 7: output -->
+        <article class="panel p7">
+          <p class="role">Build output — <code>pkgs.hello</code>, fully resolved.</p>
+          <figure class="code-card term">
+            <figcaption>terminal</figcaption>
+<pre><span class="p">$</span> nix build -f default.nix hello
+<span class="p">$</span> ./result/bin/hello
+Hello, world!</pre>
+          </figure>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SHARES / PINS ========================== -->
+  <section class="block" aria-label="One version across the tree">
+    <h2>One version across the tree <span class="sub">— toggle</span></h2>
+    <p class="lede">By default every dependency re-locks its own <code class="mono">nixpkgs</code>. <code class="mono">shares</code> unifies the subtree; <code class="mono">pins</code> protects a dependency from an ancestor's share.</p>
+
+    <div class="demo">
+      <input class="ctl" type="checkbox" id="t-share">
+      <input class="ctl" type="checkbox" id="t-pin">
+
+      <div class="controls">
+        <label class="switch" for="t-share"><span class="knob"></span> root: <b>shares</b> = [ "nixpkgs" ]</label>
+        <label class="switch" for="t-pin" data-tip="Only has an effect when an ancestor shares this dep"><span class="knob"></span> B: <b>pins</b> = [ "nixpkgs" ]</label>
+      </div>
+
+      <ul class="tree">
+        <li class="tn root">
+          <span class="node root" data-tip="root — shares nixpkgs down the tree" tabindex="0">
+            <span class="name">root</span>
+            <span class="pill">nixpkgs@unstable</span>
+            <span class="badge shares">shared ↓</span>
+          </span>
+          <ul>
+            <li class="tn a">
+              <span class="node a" data-tip="dependency of root" tabindex="0">
+                <span class="name">A</span>
+                <span class="ver own"><span class="pill">nixpkgs@25.11</span></span>
+                <span class="ver shared"><span class="pill">nixpkgs@unstable</span> <em>shared</em></span>
+              </span>
+              <ul>
+                <li class="tn b">
+                  <span class="node b" data-tip="declares pins = [ &quot;nixpkgs&quot; ]" tabindex="0">
+                    <span class="name">B</span>
+                    <span class="ver own"><span class="pill">nixpkgs@26.05</span></span>
+                    <span class="ver shared"><span class="pill">nixpkgs@unstable</span> <em>shared</em></span>
+                    <span class="ver pinned"><span class="pill">nixpkgs@26.05</span> <em>pinned</em></span>
+                    <span class="badge pinmark">pinned</span>
+                  </span>
+                  <ul>
+                    <li class="tn c">
+                      <span class="node c" data-tip="dependency of B (below the pin)" tabindex="0">
+                        <span class="name">C</span>
+                        <span class="ver own"><span class="pill">nixpkgs@25.11</span></span>
+                        <span class="ver shared"><span class="pill">nixpkgs@unstable</span> <em>shared</em></span>
+                        <span class="ver below"><span class="pill">nixpkgs@25.11</span> <em>own</em></span>
+                      </span>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+
+      <div class="caps">
+        <p class="cap share"><code>shares = [ "nixpkgs" ]</code> at the root overrides <code>nixpkgs</code> across its <em>entire</em> subtree — <code>A</code>, <code>B</code> and <code>C</code> all resolve to root's <code>/nixpkgs</code> (unstable). It does not touch root's own version.</p>
+        <p class="cap pin"><code>pins = [ "nixpkgs" ]</code> at <code>B</code> protects its own <code>nixpkgs@26.05</code> from the ancestor share. Below the pin the share no longer reaches: <code>C</code> keeps <code>/A/B/C/nixpkgs</code> (25.11).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================= GROUPS ============================= -->
+  <section class="block" aria-label="Optional dependencies">
+    <h2>Optional dependencies <span class="sub">— toggle groups</span></h2>
+    <p class="lede">A dependency is fetched only when its group is enabled — so groups double as <em>feature flags</em>. Gate a heavy, optional dependency behind its own group (say, a pinned CUDA toolkit); only builds that enable it pay the download. One <code class="mono">entrypoint.nix</code> serves every group; accessing a disabled dependency throws.</p>
+
+    <div class="demo">
+      <input class="ctl" type="checkbox" id="g-eval" checked>
+      <input class="ctl" type="checkbox" id="g-dev">
+      <input class="ctl" type="checkbox" id="g-cuda">
+
+      <div class="controls">
+        <label class="switch" for="g-eval"><span class="knob"></span> groups: <b>eval</b></label>
+        <label class="switch" for="g-dev"><span class="knob"></span> groups: <b>dev</b></label>
+        <label class="switch" for="g-cuda"><span class="knob"></span> groups: <b>cuda</b></label>
+      </div>
+
+      <div class="board">
+        <div class="dep d-nixpkgs">
+          <span class="dname">nixpkgs</span><span class="grp">eval</span>
+          <div class="state ok">available</div>
+          <div class="state bad">throws on access</div>
+        </div>
+        <div class="dep d-treefmt">
+          <span class="dname">treefmt-nix</span><span class="grp">dev</span>
+          <div class="state ok">available</div>
+          <div class="state bad">throws on access</div>
+        </div>
+        <div class="dep d-cuda">
+          <span class="dname">cudatoolkit</span><span class="grp">cuda</span>
+          <div class="state ok">available</div>
+          <div class="state bad">throws on access</div>
+        </div>
+      </div>
+
+<pre class="mini"><span class="k">groups</span> = {
+  eval = { nixpkgs = [ ]; };
+  dev  = { treefmt-nix = [ ]; };
+  cuda = { cudatoolkit = [ ]; };
+};</pre>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============================= FOOTER ============================= -->
+<footer class="footer">
+  <div class="wrap">
+    <figure class="code-card term">
+      <figcaption>get started</figcaption>
+<pre><span class="p">$</span> nix run github:hsjobeki/mana init
+<span class="p">$</span> nix run github:hsjobeki/mana update</pre>
+    </figure>
+    <p class="links">
+      <a href="https://github.com/hsjobeki/mana">github.com/hsjobeki/mana</a>
+      <span aria-hidden="true">·</span>
+      <a href="https://github.com/hsjobeki/mana#readme">README</a>
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
